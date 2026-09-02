@@ -3436,3 +3436,27 @@ textarea:focus-visible {
 }
 .perf-hist { margin-top: 10px; }
 .perf-hist .af-row { padding: 5px 0; }
+
+/* ===== AI PROVIDERS (multi-AI orchestration) ===== */
+.ai-provider-card { border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:10px; background:rgba(255,255,255,.015); }
+.ai-provider-card:last-child { margin-bottom:0; }
+.ai-provider-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.ai-provider-name { font-weight:800; font-size:15px; flex:1; min-width:140px; }
+.ai-pill { font-size:11px; padding:2px 10px; border-radius:20px; background:rgba(255,255,255,.07); color:#ccc; }
+.ai-pill.ok { background:rgba(61,214,140,.16); color:#3dd68c; }
+.ai-pill.bad { background:rgba(255,80,80,.15); color:#ff6868; }
+.ai-pill.muted { color:var(--muted-dim,#666); }
+.ai-provider-body { margin-top:10px; display:grid; gap:8px; }
+.ai-provider-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:13px; }
+.ai-provider-row label { display:flex; align-items:center; gap:6px; color:var(--muted,#aaa); }
+.ai-provider-row .inspector-input { max-width:220px; }
+.ai-provider-actions { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:4px; }
+.ai-provider-actions input[type=password], .ai-provider-actions input[type=text] { background:transparent; border:1px solid var(--line); border-radius:8px; padding:6px 10px; color:#eee; font-size:12px; min-width:220px; }
+.ai-provider-actions input[type=password]:focus, .ai-provider-actions input[type=text]:focus { outline:none; border-color:#4cc2ff; }
+.ai-usage-row { display:flex; justify-content:space-between; padding:8px 14px; border-bottom:1px solid var(--line); font-size:13px; }
+.ai-usage-row:last-child { border-bottom:none; }
+.ai-usage-row b { color:#eee; font-variant-numeric:tabular-nums; }
+.ai-usage-row .ukl { color:var(--muted-dim,#777); font-size:11px; }
+.ai-usage-grid { display:grid; grid-template-columns:1fr; gap:14px; }
+.ai-capability-chip { font-size:11px; color:var(--muted-dim,#888); }
+.ai-note-line { font-size:12px; color:var(--muted-dim,#888); }

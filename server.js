@@ -210,6 +210,14 @@ function loadClipmeLocalAI() {
 }
 const localAIModule = loadClipmeLocalAI();
 
+// ── AI ORCHESTRATION LAYER (multi-provider) ──
+// Provider-agnostic: Local AI + provider eksternal yang terhubung.
+// Seluruh AI logic tidak menumpuk di server.js — di sini hanya orkestrasi.
+const aiManager = (() => { try { return require(path.join(ROOT, "ai", "manager.js")); } catch (e) { console.error("Gagal memuat ai/manager.js:", e.message); return null; } })();
+const aiOrchestrator = (() => { try { return require(path.join(ROOT, "ai", "orchestrator.js")); } catch (e) { console.error("Gagal memuat ai/orchestrator.js:", e.message); return null; } })();
+const aiConfig = (() => { try { return require(path.join(ROOT, "ai", "config.js")); } catch (e) { console.error("Gagal memuat ai/config.js:", e.message); return null; } })();
+const AI_ENABLED = !!aiManager && !!aiOrchestrator;
+
 // Hardware detection cache — resolve runtime sekali di awal, refresh berkala.
 let hardwareState = {
   detected: null,
@@ -400,6 +408,66 @@ async function callClipmeLLM(content, targetLanguage) {
   } catch {
     return { ok: false, error: "Respons model bukan JSON valid." };
   }
+}
+
+// ── Multi-AI Consensus entry (addendum #8, #9, #21) ──
+// Jalankan HOOK_ANALYSIS lintas provider terhubung (parallel), kumpulkan
+// consensus, lalu kembalikan {ok, data, providers, consensus, fallback} yang
+// kompatibel dengan jalur normalizeLlmAnalysis. Selalu ada hasil (fallback
+// local/heuristic) bila semua provider cloud gagal.
+async function runClipmeConsensus(content, targetLanguage, strategy) {
+  if (!AI_ENABLED) return { ok: false, error: "AI orchestration unavailable" };
+  const systemPrompt = loadClipmeSystemPrompt();
+  if (!systemPrompt) return { ok: false, error: "System prompt tidak tersedia." };
+  const userPrompt = [
+    `Objective: analyze the source clip below and produce the ClipMe intelligence output strictly as JSON (no markdown fences).`,
+    `Target language for captions, hashtags and any generated copy: ${targetLanguage || "Indonesia"}.`,
+    `The JSON must follow exactly this schema:`,
+    `{ "score": 0-100, "confidence": 0-100, "hookScore": 0-100, "retentionScore": 0-100,`,
+    `  "shareabilityScore": 0-100, "commentScore": 0-100, "hookType": "one of the 16 hook types",`,
+    `  "originalHook": "...", "recommendedHook": "...", "hookReordered": true|false,`,
+    `  "keyMessage": "...", "payoff": "...", "storyStructure": "...", "contextWarning": "None or warning",`,
+    `  "editingNotes": "...", "quoteLine": "...", "title": "...",`,
+    `  "captionVariants": { "A": "...", "B": "...", "C": "..." }, "bestCaption": "A|B|C", "bestCaptionReason": "...",`,
+    `  "cta": "... or \\\"None\\\"", "discussionQuestion": "... or \\\"None\\\"",`,
+    `  "hashtags": { "primary": "#a #b #c", "niche": "#x #y", "broad": "#z" }`,
+    `}`,
+    ``,
+    `SOURCE CLIP:`,
+    content
+  ].join("\n");
+
+  const langForProvider = targetLanguage === "English" ? "en" : "id";
+  const result = await aiOrchestrator.runTask("HOOK_ANALYSIS", {
+    system: systemPrompt,
+    user: userPrompt,
+    language: langForProvider,
+    strategy: strategy || aiManager.getAiStrategy(),
+    extract: { scoreKeys: ["score", "hookScore", "confidence", "retentionScore", "shareabilityScore", "commentScore"], labelKey: "hookType" }
+  }).catch((e) => ({ ok: false, error: e && e.message }));
+
+  if (!result || !result.ok) return { ok: false, error: (result && result.error) || "AI consensus gagal." };
+  // Provider yang berhasil + data consensus; hasil "terbaik" dari raw untuk
+  // finalisasi teks copy (title/caption/hashtags), score dari consensus.
+  const bestRaw = result.raw && result.raw.length ? result.raw[0].data : {};
+  const merged = {
+    ...bestRaw,
+    score: result.consensus && result.consensus.score != null ? Math.round(result.consensus.score) : bestRaw.score,
+    hookType: (result.consensus && result.consensus.label) || bestRaw.hookType,
+    confidence: (result.consensus && result.consensus.confidence != null ? Math.round(result.consensus.confidence * 100) : bestRaw.confidence),
+    _aiConsensus: {
+      providers: result.providers,
+      providerVotes: result.providerVotes,
+      score: result.consensus && result.consensus.score,
+      label: result.consensus && result.consensus.label,
+      confidence: result.consensus && result.consensus.confidence,
+      reasoningSummary: result.consensus && result.consensus.reasoningSummary,
+      fallback: result.fallback === true,
+      strategy: result.strategy,
+      promptVersion: result.promptVersion
+    }
+  };
+  return { ok: true, data: merged, providers: result.providers, consensus: result.consensus, fallback: result.fallback === true };
 }
 
 // Validate/normalize raw LLM output into the same shape produced by clipmeAssemble.
@@ -5111,22 +5179,58 @@ async function handleAnalyzeClip(req, res) {
   };
   const content = `Title: ${meta.sourceTitle}\nLanguage: ${meta.language}\nClip window: ${clip.start}s - ${clip.end}s\n\nTRANSCRIPT (absolute timestamps):\n${sourceText}`;
 
-  const llmResult = await callClipmeLLM(content, targetLanguage).catch(() => ({ ok: false }));
-  if (llmResult.ok && llmResult.data) {
-    try {
-      analysis = normalizeLlmAnalysis(llmResult.data, heuristicAnalysis);
-      llmGenerated = true;
-    } catch {
-      // keep heuristic
+  // Multi-provider mode: AI orchestration (consensus lintas provider). Bila
+  // orkestrasi tidak tersedia, fallback ke jalur LLM tunggal legacy.
+  let aiMeta = null;
+  if (payload.aiMode !== "legacy" && AI_ENABLED && payload.aiStrategy !== "local-only" && payload.aiProviders?.length !== 0) {
+    const consensus = await runClipmeConsensus(content, targetLanguage, payload.aiStrategy).catch((e) => ({ ok: false, error: e && e.message }));
+    if (consensus.ok && consensus.data) {
+      try {
+        analysis = normalizeLlmAnalysis(consensus.data, heuristicAnalysis);
+        analysis._aiConsensus = consensus.data._aiConsensus || null;
+        aiMeta = {
+          providers: consensus.providers || [],
+          consensus: consensus.consensus || null,
+          fallback: consensus.fallback === true,
+          strategy: consensus.strategy || (payload.aiStrategy || aiManager && aiManager.getAiStrategy())
+        };
+        llmGenerated = true;
+      } catch {
+        // keep heuristic
+      }
     }
   }
+
+  // Bila tidak ada hasil consensus (atau diminta legacy), pakai LLM tunggal sebagai opsi.
+  if (!aiMeta && payload.aiMode === "legacy") {
+    const llmResult = await callClipmeLLM(content, targetLanguage).catch(() => ({ ok: false }));
+    if (llmResult.ok && llmResult.data) {
+      try {
+        analysis = normalizeLlmAnalysis(llmResult.data, heuristicAnalysis);
+        llmGenerated = true;
+      } catch {
+        // keep heuristic
+      }
+    }
+  }
+
+  const providerLabel = aiMeta
+    ? `clipme-ai:${aiMeta.providers.join("+") || "local"}`
+    : llmGenerated
+      ? "clipme-llm"
+      : "clipme-heuristic";
 
   sendJson(res, 200, {
     clipId: clip.id,
     start: clip.start,
     end: clip.end,
-    provider: llmGenerated ? "clipme-llm" : "clipme-heuristic",
+    provider: providerLabel,
     analysis,
+    contentPackage: buildContentPackage(projectId, clip, analysis, null, aiMeta, {
+      sourceTracked: true,
+      providers: aiMeta ? aiMeta.providers : [],
+      creative: !!payload.creative
+    }),
     timedSegments: getPreviewTimedSegments(projectDir, manifest, payload)
   });
 }
@@ -5202,6 +5306,72 @@ function flattenTranscriptWords(segments) {
     });
   }
   return words;
+}
+
+// Caption QA + optional AI rewrite (#17, #18, #19).
+// Local engine tetap sumber timing/segmentation/word alignment — AI hanya
+// menilai & memberi saran (punct/emphasis/readability/filler/hallucination).
+// Mengembalikan { warnings, suggestions } — tidak pernah menimpa timestamp.
+async function runCaptionQAPass(timed, language, enhance) {
+  const out = { warnings: [], suggestions: [], enabled: false };
+  if (!AI_ENABLED || !aiOrchestrator) return out;
+  const strategy = aiManager.getStrategyForTask("CAPTION_QA");
+  if (strategy === "local-only") return out;
+  const hasCloud = (aiManager.enabledProviders() || []).some((p) => p.id !== "local");
+  if (!hasCloud) return out;
+  out.enabled = true;
+
+  const srcText = (timed || [])
+    .map((s) => `[${(Number(s.start) || 0).toFixed(1)}-${(Number(s.end) || 0).toFixed(1)}s] ${String(s.text || "")}`)
+    .join("\n");
+  if (!srcText.trim()) return out;
+
+  const system = "You are a caption quality auditor. Check the caption blocks for: spelling, punctuation, missing words, hallucinations (words not supported by/near the source), excessive rewriting, readability, and timing consistency note. Respond as JSON only with { \"warnings\": [ { \"index\": int, \"severity\": \"info|warn|error\", \"message\": \"...\", \"review\": true } ], \"overall\": \"ok|needs-review\", \"suggestion\": \"brief improvement hint\" }.";
+  const qa = await aiOrchestrator.runTask("CAPTION_QA", {
+    system,
+    user: srcText.slice(0, 6000),
+    language,
+    strategy,
+    skipCache: false,
+    extract: { scoreKeys: ["qaScore"], labelKey: "overall" }
+  }).catch(() => null);
+
+  if (qa && qa.ok && qa.raw) {
+    const d = qa.raw[0].data;
+    const warns = Array.isArray(d && d.warnings) ? d.warnings : [];
+    out.warnings = warns
+      .map((w) => ({
+        index: Number(w && w.index) || 0,
+        severity: String((w && w.severity) || "warn").slice(0, 8),
+        message: String((w && w.message) || "").slice(0, 300),
+        review: !!(w && w.review)
+      }))
+      .filter((w) => w.message);
+    if (d && d.suggestion) out.suggestions.push(String(d.suggestion).slice(0, 200));
+    out.qaLabel = d && d.overall ? String(d.overall) : "needs-review";
+    out.providers = qa.providers;
+    out.promptVersion = qa.promptVersion || null;
+  }
+
+  // AI ENHANCED (#18): saran teks kapital/tanda baca per-blok (TIMING TETAP lokal).
+  if (enhance && out.warnings.length === 0) {
+    const rw = await aiOrchestrator.runTask("CAPTION_REWRITE", {
+      system: "You improve caption punctuation, emphasis and filler handling only. Never change meaning or timing. Respond as JSON: { \"blocks\": [ { \"index\": int, \"text\": \"refined caption\" } ] }.",
+      user: srcText.slice(0, 6000),
+      language,
+      strategy: aiManager.getStrategyForTask("CAPTION_REWRITE"),
+      skipCache: false,
+      extract: { scoreKeys: ["rewriteScore"], labelKey: "caption" }
+    }).catch(() => null);
+    if (rw && rw.ok && rw.raw) {
+      const blocks = rw.raw[0].data && Array.isArray(rw.raw[0].data.blocks) ? rw.raw[0].data.blocks : [];
+      out.suggestedBlocks = blocks
+        .map((b) => ({ index: Number(b && b.index) || 0, text: String((b && b.text) || "").trim() }))
+        .filter((b) => b.text);
+      out.rewriteProviders = rw.providers;
+    }
+  }
+  return out;
 }
 
 async function handleAutoCaptions(req, res) {
@@ -5458,12 +5628,21 @@ async function handleAutoCaptions(req, res) {
     console.error("Gagal persist caption:", err.message);
   }
 
+  // Caption QA / AI enhanced (optional, cloud providers connected saja).
+  // Tidak pernah mengubah timing — hanya melaporkan + memberi saran teks.
+  let qaResult = null;
+  if (payload.captionQA !== false || payload.aiEnhanced) {
+    qaResult = await runCaptionQAPass(timed, payload.language || "id", !!payload.aiEnhanced).catch(() => null);
+  }
+
   sendJson(res, 200, {
     provider: llmUsed ? "caption-llm" : "caption-heuristic",
     confidence: result.confidence || (llmUsed ? 85 : 75),
     caption,
     hook,
-    segments: timed
+    segments: timed,
+    qa: qaResult || { warnings: [], suggestions: [], enabled: false },
+    aiEnhanced: !!payload.aiEnhanced
   });
 }
 
@@ -5589,6 +5768,74 @@ async function handleClipCaptionsGet(req, res, params) {
     sendJson(res, 500, { error: err.message });
   }
 }
+// CONTENT PACKAGE V2 (addendum #33) — struktur konten+analisis+AI+repliz per clip.
+// Dibangun dari data nyata (analysis + metadata + consensus AI), bukan karangan.
+// `repliz` hanya wadah distribusi — layer AI berhenti SEBELUM Repliz (#32).
+function buildContentPackage(projectId, clip, analysis, meta, aiConsensus, opts = {}) {
+  const a = analysis || clip.analysis || {};
+  const m = meta || clip.metadata || {};
+  const consensus = a && a._aiConsensus ? a._aiConsensus : (aiConsensus || null);
+  const sourceFidelity = opts.creative ? "MEDIUM" : "HIGH"; // default grounded
+  return {
+    projectId,
+    clipId: clip.id != null ? clip.id : null,
+    media: {
+      start: clip.start != null ? clip.start : null,
+      end: clip.end != null ? clip.end : null,
+      sourceTracked: !!opts.sourceTracked
+    },
+    content: {
+      title: {
+        text: String(m.title || a.title || clip.deepTitle || clip.recommendedHook || "").slice(0, 140),
+        score: a.titleScore != null ? a.titleScore : null,
+        alternatives: Array.isArray(a.titleAlternatives) ? a.titleAlternatives.filter(Boolean).slice(0, 4) : []
+      },
+      description: {
+        text: String(m.description || a.keyMessage || a.payoff || "").slice(0, 400)
+      },
+      caption: {
+        text: String(m.caption || a.caption || clip.caption || ""),
+        bestCaption: a.bestCaption || null
+      },
+      hashtags: Array.isArray(m.hashtags) ? m.hashtags.slice(0, 12) : []
+    },
+    analysis: {
+      hook: {
+        type: String(a.hookType || ""),
+        score: a.hookScore != null ? a.hookScore : (typeof a.score === "number" ? a.score : null),
+        recommended: String(a.recommendedHook || clip.recommendedHook || ""),
+        original: String(a.originalHook || ""),
+        confidence: a.hookConfidence != null ? a.hookConfidence : a.confidence != null ? a.confidence : null,
+        explanation: String(a.hookExplanation || a.hookStrategy || "")
+      },
+      text: a.text ? a.text : null,
+      virality: a.retentionScore != null || a.shareabilityScore != null
+        ? { retention: a.retentionScore != null ? a.retentionScore : null, shareability: a.shareabilityScore != null ? a.shareabilityScore : null, comment: a.commentScore != null ? a.commentScore : null }
+        : null,
+      sourceFidelity: {
+        level: sourceFidelity,
+        hallucinationRisk: opts.hallucinationRisk ? !!opts.hallucinationRisk : false,
+        notes: opts.hallucinationRisk ? "Provider memperkenalkan informasi tanpa dukungan sumber." : "Grounded ke transkrip."
+      }
+    },
+    ai: {
+      strategy: String((consensus && consensus.strategy) || aiManager && aiManager.getAiStrategy() || "balanced"),
+      providers: (consensus && consensus.providers) || (opts.providers || []),
+      providerVotes: (consensus && consensus.providerVotes) || null,
+      consensus: consensus
+        ? { score: consensus.score, confidence: consensus.confidence, reasoningSummary: consensus.reasoningSummary }
+        : null,
+      promptVersions: {
+        hook: consensus && consensus.promptVersion ? consensus.promptVersion : null
+      }
+    },
+    repliz: {
+      destinationAccounts: [],
+      schedule: null,
+      note: "Distribusi/publish via Repliz — layer AI selesai di Content Package ini (addendum #32)."
+    }
+  };
+}
 
 // AI METADATA GENERATOR — title/description/hashtags dari konten clip nyata.
 // Deterministik dari transkrip + analysis (deepTitle/hook/hashtags engine).
@@ -5638,13 +5885,91 @@ function findClipSentences(manifest, clip) {
   } catch { return []; }
 }
 
+// AI-assisted metadata regeneration (#14, #34, #36, #7).
+// Memakai provider terhubung via orkestrator + consensus. Bila tidak ada
+// provider cloud terkonfigurasi, mengembalikan null (caller pakai rotasi
+// lokal). Source fidelity: worker memakai teks clip verbatim sebagai konteks.
+async function regenerateClipMetadataViaAI(clip, sentences) {
+  if (!AI_ENABLED || !aiOrchestrator) return null;
+  const strategy = aiManager.getAiStrategy();
+  if (strategy === "local-only") return null;
+  const hasCloud = (aiManager.enabledProviders() || []).some((p) => p.id !== "local");
+  if (!hasCloud) return null;
+
+  const srcText = (sentences || []).map((s) => String(s.text || "")).filter(Boolean).join(" ");
+  if (!srcText) return null;
+  const language = "id";
+  const system = "You are a short-form content metadata copywriter. Produce short titles, engaging descriptions and relevant hashtags strictly grounded in the source transcript. Never invent facts, numbers, or quotes that are not present. Respond as JSON only.";
+
+  // TITLE_GENERATION: konsensus memberi recommended + raw alternatif.
+  const titleTask = await aiOrchestrator.runTask("TITLE_GENERATION", {
+    system,
+    user: `SOURCE:\n${srcText.slice(0, 4000)}`,
+    language,
+    strategy,
+    extract: { scoreKeys: ["titleScore"], labelKey: "titleRelevance" }
+  }).catch(() => null);
+
+  const hashtagsTask = await aiOrchestrator.runTask("HASHTAG_GENERATION", {
+    system,
+    user: `SOURCE:\n${srcText.slice(0, 4000)}`,
+    language,
+    strategy,
+    extract: { scoreKeys: ["hashtagScore"], labelKey: "hashtagStrength" }
+  }).catch(() => null);
+
+  const titleBest = titleTask && titleTask.raw && titleTask.raw[0] && titleTask.raw[0].data;
+  const tagBest = hashtagsTask && hashtagsTask.raw && hashtagsTask.raw[0] && hashtagsTask.raw[0].data;
+
+  const result = {
+    title: String((titleBest && (titleBest.title || titleBest.recommendedHook)) || "").trim().slice(0, 140),
+    description: "",
+    hashtags: [],
+    aiGenerated: true,
+    aiConsensus: {
+      titleProviders: titleTask ? titleTask.providers : [],
+      titlePromptVersion: titleTask ? titleTask.promptVersion : null,
+      hashtagProviders: hashtagsTask ? hashtagsTask.providers : [],
+      strategy
+    }
+  };
+
+  // Description dari transkrip (fidelity tinggi) + CTA bila ada di analysis.
+  const analysis = clip.analysis || {};
+  const keyMsg = String(analysis.keyMessage || "").trim();
+  result.description = keyMsg || srcText.slice(0, 300);
+  if (typeof analysis.cta === "string" && analysis.cta && !result.description.includes(analysis.cta)) {
+    result.description = `${result.description}\n\n${analysis.cta.trim()}`.trim();
+  }
+  if (result.description.length > 400) result.description = `${result.description.slice(0, 397)}...`;
+
+  // Hashtags: ambil dari provider (beragam schema) atau fallback deterministik.
+  const tags = [];
+  const collect = (d) => {
+    if (!d) return;
+    if (Array.isArray(d.hashtags)) tags.push(...d.hashtags);
+    else if (d.hashtags && typeof d.hashtags === "object") {
+      tags.push(...(d.hashtags.primary || []), ...(d.hashtags.niche || []), ...(d.hashtags.broad || []));
+    } else if (Array.isArray(d.tags)) tags.push(...d.tags);
+  };
+  collect(titleBest);
+  collect(tagBest);
+  result.hashtags = [
+    ...new Set(tags.map((t) => String(t).replace(/^#/, "")).map((t) => `#${t.replace(/[^\w\d]/g, "")}`).filter((t) => t.length > 1))
+  ].slice(0, 10);
+
+  if (!result.title) return null;
+  return { ...result, generatedAt: Date.now() };
+}
+
 async function handleClipMetadata(req, res, params) {
   const projectId = params.projectId || "";
   if (!isValidUUID(projectId)) { sendJson(res, 400, { error: "Invalid project ID" }); return; }
   const projectDir = path.join(UPLOAD_DIR, projectId);
   const manifest = readProjectManifest(projectDir);
   if (!manifest || !Array.isArray(manifest.clips)) { sendJson(res, 404, { error: "Project tidak ditemukan." }); return; }
-  collectRequest(req, 1).then((buf) => {
+  try {
+    const buf = await collectRequest(req, 60);
     let body = {};
     try { body = JSON.parse(buf.toString("utf8") || "{}"); } catch {}
     const idx = manifest.clips.findIndex((c) => String(c.id) === String(body.clipId));
@@ -5653,19 +5978,34 @@ async function handleClipMetadata(req, res, params) {
     const sentences = findClipSentences(manifest, clip);
     let meta = composeClipMetadata(clip, sentences);
     if (body.regenerate) {
-      const alts = Array.isArray(clip.deepTitleAlternatives) ? clip.deepTitleAlternatives.filter(Boolean) : [];
-      if (alts.length) {
-        const pick = alts[meta._rot % alts.length] || alts[0];
-        meta.title = String(pick).slice(0, 140);
-        meta._rot = (meta._rot + 1) % Math.max(alts.length, 1);
-        meta.rotatedTitle = true;
+      // (#36) Regenerate: request baru ke provider terhubung — bukan rotasi statis.
+      const aiMeta = await regenerateClipMetadataViaAI(clip, sentences).catch(() => null);
+      if (aiMeta) {
+        meta = { ...meta, ...aiMeta, _rot: 0 };
+      } else {
+        const alts = Array.isArray(clip.deepTitleAlternatives) ? clip.deepTitleAlternatives.filter(Boolean) : [];
+        if (alts.length) {
+          const pick = alts[meta._rot % alts.length] || alts[0];
+          meta.title = String(pick).slice(0, 140);
+          meta._rot = (meta._rot + 1) % Math.max(alts.length, 1);
+          meta.rotatedTitle = true;
+        }
       }
     }
     delete meta._rot;
     clip.metadata = meta;
+    // Content Package V2 (#33): simpan ke clip agar project pulih setelah restart.
+    try {
+      clip.contentPackage = buildContentPackage(projectId, clip, null, meta, (clip.analysis && clip.analysis._aiConsensus) || null, {
+        sourceTracked: true,
+        providers: (clip.analysis && clip.analysis._aiConsensus && clip.analysis._aiConsensus.providers) || []
+      });
+    } catch (e) {}
     try { fs.writeFileSync(path.join(projectDir, "project.json"), JSON.stringify(manifest, null, 2)); } catch {}
-    sendJson(res, 200, { metadata: meta });
-  }).catch(() => sendJson(res, 400, { error: "Invalid JSON" }));
+    sendJson(res, 200, { metadata: meta, contentPackage: clip.contentPackage });
+  } catch (e) {
+    sendJson(res, 400, { error: e.message || "Invalid JSON" });
+  }
 }
 
 async function handleProjectConfig(req, res, params) {
@@ -6892,6 +7232,182 @@ async function handleSttModels(req, res) {
   }
 }
 
+// ===== AI PROVIDER MANAGEMENT & ORCHESTRATION API (addendum #37) ============
+// Provider config: status (tanpa secret) > save (filter allowlist, 0600) >
+// connect/disconnect/test/models. Orchestrator: analyze / generate / consensus.
+// Semua di atas engine lokal — tanpa provider apa pun aplikasi tetap berfungsi.
+
+function handleAIProviders(req, res) {
+  if (!AI_ENABLED) { sendJson(res, 200, { providers: [] }); return; }
+  const providers = aiManager.allProvidersForUI();
+  sendJson(res, 200, { providers });
+}
+
+async function handleAIProviderConnect(req, res, params) {
+  if (!AI_ENABLED) { sendJson(res, 503, { error: "AI not available" }); return; }
+  const id = params.id || "";
+  const def = aiConfig.providerDef(id);
+  if (!def || def.id === "local") { sendJson(res, 404, { error: "Provider tidak dikenal" }); return; }
+  try {
+    const body = JSON.parse((await collectRequest(req, 20)).toString("utf8"));
+    const keys = {};
+    for (const k of def.keys) {
+      if (typeof body[k.key] === "string") keys[k.key] = body[k.key];
+    }
+    // Terima juga field generik apiKey/API key — dipetakan ke key required.
+    if (!Object.keys(keys).length && typeof body.apiKey === "string") {
+      const required = def.keys.find((k) => k.required);
+      if (required) keys[required.key] = body.apiKey;
+    }
+    if (!def.keys.some((k) => k.required && Boolean(keys[k.key]))) {
+      sendJson(res, 400, { error: `API key ${def.keys.find((k) => k.required).label} diperlukan.` });
+      return;
+    }
+    aiConfig.setKeys(id, keys);
+    const test = await aiManager.test(id);
+    sendJson(res, 200, { id, configured: aiConfig.isConfigured(id), health: test });
+  } catch (e) {
+    sendJson(res, 400, { error: e.message || String(e) });
+  }
+}
+
+async function handleAIProviderDisconnect(req, res, params) {
+  if (!AI_ENABLED) { sendJson(res, 503, { error: "AI not available" }); return; }
+  const id = params.id || "";
+  const def = aiConfig.providerDef(id);
+  if (!def || def.id === "local") { sendJson(res, 404, { error: "Provider tidak dikenal" }); return; }
+  // Hapus key yang tersimpan (env tidak bisa dihapus — hanya dilaporkan).
+  const cleared = {};
+  for (const k of def.keys) if (!process.env[k.env]) cleared[k.key] = "";
+  aiConfig.setKeys(id, cleared);
+  sendJson(res, 200, { id, configured: aiConfig.isConfigured(id) });
+}
+
+async function handleAIProviderTest(req, res, params) {
+  if (!AI_ENABLED) { sendJson(res, 503, { error: "AI not available" }); return; }
+  const id = params.id || "";
+  const test = await aiManager.test(id);
+  sendJson(res, 200, { id, ...test });
+}
+
+async function handleAIProviderModels(req, res, params) {
+  if (!AI_ENABLED) { sendJson(res, 503, { error: "AI not available" }); return; }
+  const id = params.id || "";
+  const models = await aiManager.listModels(id);
+  sendJson(res, 200, { id, ...models });
+}
+
+async function handleAIProviderUpdate(req, res, params) {
+  if (!AI_ENABLED) { sendJson(res, 503, { error: "AI not available" }); return; }
+  const id = params.id || "";
+  if (!aiConfig.providerDef(id)) { sendJson(res, 404, { error: "Provider tidak dikenal" }); return; }
+  try {
+    const body = JSON.parse((await collectRequest(req, 10)).toString("utf8"));
+    // Batch: enable/disable + priority + weight + model.
+    aiManager.setSettings(id, {
+      enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
+      priority: body.priority != null ? body.priority : undefined,
+      weight: body.weight != null ? body.weight : undefined,
+      timeout: body.timeout != null ? body.timeout : undefined
+    });
+    if (body.model) aiConfig.setModel(id, String(body.model));
+    sendJson(res, 200, { ok: true, id });
+  } catch (e) {
+    sendJson(res, 400, { error: e.message || String(e) });
+  }
+}
+
+function handleAISettingsGet(req, res) {
+  if (!AI_ENABLED) { sendJson(res, 200, { strategy: "local-only", perTask: {} }); return; }
+  sendJson(res, 200, {
+    strategy: aiManager.getAiStrategy(),
+    perTask: aiManager.getAiProfiles(),
+    profiles: ["local-only", "low-cost", "fast", "balanced", "quality-first", "deep", "maximum"],
+    tasks: aiOrchestrator ? Object.keys(aiOrchestrator.TASK_DEFS) : [],
+    providerOrder: aiManager.allProvidersForUI().sort((a, b) => a.priority - b.priority).map((p) => ({ id: p.id, priority: p.priority }))
+  });
+}
+
+async function handleAISettingsSet(req, res) {
+  if (!AI_ENABLED) { sendJson(res, 503, { error: "AI not available" }); return; }
+  try {
+    const body = JSON.parse((await collectRequest(req, 10)).toString("utf8"));
+    if (body.strategy && aiManager.getAiProfiles) {
+      const valid = ["local-only", "low-cost", "fast", "balanced", "quality-first", "deep", "maximum"];
+      if (valid.includes(body.strategy)) aiManager.setAiStrategy(body.strategy);
+    }
+    if (body.perTask && typeof body.perTask === "object") {
+      const valid = new Set(["local-only", "low-cost", "fast", "balanced", "quality-first", "deep", "maximum"]);
+      for (const [task, profile] of Object.entries(body.perTask)) {
+        if (valid.has(profile)) aiManager.setAiProfile(task, profile);
+      }
+    }
+    sendJson(res, 200, { ok: true });
+  } catch (e) {
+    sendJson(res, 400, { error: e.message || String(e) });
+  }
+}
+
+function handleAIUsage(req, res) {
+  if (!AI_ENABLED) { sendJson(res, 200, { providers: {}, total: {} }); return; }
+  const snapshot = aiManager.usageSnapshot();
+  // Tambah status provider agar UI bisa menampilkan connected/ready.
+  const providers = aiManager.allProvidersForUI();
+  const byId = {};
+  for (const p of providers) byId[p.id] = p;
+  sendJson(res, 200, { usage: snapshot, providers: byId });
+}
+
+async function handleAIAnalyze(req, res) {
+  if (!AI_ENABLED) { sendJson(res, 503, { error: "AI not available" }); return; }
+  try {
+    const body = JSON.parse((await collectRequest(req, 50)).toString("utf8"));
+    const task = String(body.task || "HOOK_ANALYSIS").toUpperCase();
+    if (!aiOrchestrator.TASK_DEFS[task]) { sendJson(res, 400, { error: `Task tidak dikenal: ${task}` }); return; }
+    const params = {
+      system: typeof body.system === "string" ? body.system : "",
+      user: body.user || "",
+      language: body.language || "id",
+      strategy: body.strategy || aiManager.getAiStrategy(),
+      skipCache: !!body.skipCache,
+      creative: !!body.creative,
+      extract: body.extract
+    };
+
+    // Job queue (#27): kerja AI berat tidak dieksekusi di dalam UI handler.
+    // `async` (default) -> kembalikan jobId & poll GET /api/jobs/:id.
+    // `wait` -> eksekusi & tunggu hasil (kompatibel test/pemanggil sinkron).
+    const useQueue = body.async !== false;
+    if (useQueue) {
+      const job = createJob("ai-analyze", async (setProgress, _children) => {
+        setProgress(10, `Preparing ${task}`);
+        const result = await aiOrchestrator.runTask(task, {
+          ...params,
+          onProgress: (idx, total, provider, state) => {
+            const base = 10;
+            const span = total > 0 ? Math.floor(80 / total) : 40;
+            const pct = base + Math.max(0, Math.min(span, base + span * Math.max(0, idx - 1) + (state === "running" ? 4 : state === "done" ? span : 0)));
+            setProgress(Math.max(10, Math.min(99, pct)), `AI ${provider} ${state} · ${idx}/${total}`);
+          }
+        });
+        setProgress(100, "Done");
+        return result;
+      });
+      sendJson(res, 202, { jobId: job.id, task, status: "queued" });
+      return;
+    }
+
+    const result = await aiOrchestrator.runTask(task, params);
+    sendJson(res, 200, result);
+  } catch (e) {
+    sendJson(res, 500, { error: e.message || String(e) });
+  }
+}
+
+async function handleAIGenerate(req, res) {
+  return handleAIAnalyze(req, res);
+}
+
 // Only these exact web assets are served from the project root.
 // Media (upload/preview/output) is served through dedicated /media/, /sections/, /outputs/ routes.
 const PUBLIC_WEB_FILES = new Set(["/index.html", "/styles.css", "/script.js", "/clipme-cut-to-face.js", "/clipme-active-speaker.js", "/clipme-caption-templates.js", "/clipme-camera-director.js", "/build/icon.png"]);
@@ -6928,6 +7444,17 @@ router
   .add("POST", "/api/localai/analyze", handleLocalAIAnalyze)
   .add("POST", "/api/localai/download-model", handleLocalAIDownloadModel)
     .add("GET", "/api/stt/models", handleSttModels)
+  .add("GET", "/api/ai/providers", handleAIProviders)
+  .add("POST", "/api/ai/providers/:id/connect", handleAIProviderConnect)
+  .add("POST", "/api/ai/providers/:id/disconnect", handleAIProviderDisconnect)
+  .add("POST", "/api/ai/providers/:id/test", handleAIProviderTest)
+  .add("GET", "/api/ai/providers/:id/models", handleAIProviderModels)
+  .add("PATCH", "/api/ai/providers/:id", handleAIProviderUpdate)
+  .add("GET", "/api/ai/settings", handleAISettingsGet)
+  .add("POST", "/api/ai/settings", handleAISettingsSet)
+  .add("GET", "/api/ai/usage", handleAIUsage)
+  .add("POST", "/api/ai/analyze", handleAIAnalyze)
+  .add("POST", "/api/ai/generate", handleAIGenerate)
   .add("GET", "/api/integrations", handleIntegrations)
   .add("GET", "/api/integrations/config", handleIntegrationsConfigGet)
   .add("POST", "/api/integrations/config", handleIntegrationsConfigSave)

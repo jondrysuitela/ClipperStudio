@@ -3345,6 +3345,7 @@ $("#autoCaptionBtn").addEventListener("click", async () => {
         fillerMode: ($("#fillerModeSelect") && $("#fillerModeSelect").value) || "aggressive",
         maxLines: 2,
         maxLineLength: 40,
+        aiEnhanced: !!($("#aiCaptionQA") && $("#aiCaptionQA").checked),
         model: state.sttModel || ""
       })
     });
@@ -3354,7 +3355,24 @@ $("#autoCaptionBtn").addEventListener("click", async () => {
     if (!segs.length) throw new Error("Auto caption tidak menghasilkan segmen.");
     showToast(`Auto caption siap: ${segs.length} segmen (${data.provider})`);
     settleJobProgress("success", `${segs.length} segmen (${data.provider})`);
-    $("#captionStatus").textContent = `${data.provider}: ${segs.length} segmen`;
+    // Caption QA (#19): tampilkan peringatan nyata dari provider bila ada.
+    let qaSummary = `${data.provider}: ${segs.length} segmen`;
+    const qa = data.qa;
+    if (qa && qa.enabled) {
+      const warns = Array.isArray(qa.warnings) ? qa.warnings : [];
+      const errors = warns.filter((w) => w.severity === "error");
+      const warnsInfo = warns.filter((w) => w.severity !== "error");
+      qaSummary += ` · QA ${qa.qaLabel || "ok"}`;
+      if (warns.length) {
+        qaSummary += ` (${warns.length} warning)`;
+        if (errors.length) showToast(`Caption QA menemukan ${errors.length} masalah — lihat status caption.`);
+      }
+      state.captionQA = qa;
+    } else {
+      state.captionQA = null;
+    }
+    $("#captionStatus").textContent = qaSummary;
+    $("#captionStatus").title = (state.captionQA && state.captionQA.warnings || []).map((w) => w.message).join(" · ");
     // BUG FIX: Paksa sinkronisasi penuh antara liveSegments dan captionSegments agar UI dan Video Overlay tidak desync
     state.captionSegments = segs.map((s) => ({
       ...s,
@@ -3613,6 +3631,16 @@ async function analyzeSelectedClip() {
     renderIntel(a);
     renderClipSuggestions();
     $("#intelStatus").textContent = data.provider === "clipme-llm" ? "AI (LLM)" : "Heuristic";
+    if (a && a._aiConsensus && a._aiConsensus.providers && a._aiConsensus.providers.length) {
+      const c = a._aiConsensus;
+      $("#intelStatus").textContent = `AI Consensus: ${c.providers.join(" + ")}${c.score != null ? ` (${c.score}/100)` : ""}`;
+      $("#intelStatus").title = c.reasoningSummary || "";
+      const badge = document.createElement("span");
+      badge.className = "intel-badge intel-badge--active";
+      badge.textContent = `Consensus ${Math.round((c.confidence || 0) * 100)}%${c.fallback ? " · local fallback" : ""}`;
+      const meta = $("#intelOpeningMeta");
+      if (meta) meta.appendChild(badge);
+    }
   } catch (error) {
     $("#intelStatus").textContent = "Gagal";
     showToast(error.message);
@@ -4005,6 +4033,7 @@ $$(".nav-item").forEach((button) => {
     if (button.dataset.view === "publish") { populatePubSources(); pubChecklistUpdate(); ensurePublishMetadata(); populatePubProjects(); }
     if (button.dataset.view === "calendar") { populateCalSources(); renderCalendar(); }
     if (button.dataset.view === "integrations") loadIntegrations();
+    if (button.dataset.view === "ai-providers") loadAIProviders();
     if (button.dataset.view === "analytics") { loadIntegrations(); loadAnalytics(); }
     if (button.dataset.view === "intel") populateIntelProjects();
     if (button.dataset.view === "library") loadProjects();
@@ -5895,6 +5924,10 @@ async function analyzeResultClip(clip) {
     clip.analysis = data.analysis;
     if (data.timedSegments) resultsState.transcripts[clip.id] = data.timedSegments;
     $("#riStatus").textContent = data.provider === "clipme-llm" ? "AI (LLM)" : "Heuristic";
+    if (clip.analysis && clip.analysis._aiConsensus && clip.analysis._aiConsensus.providers && clip.analysis._aiConsensus.providers.length) {
+      const c = clip.analysis._aiConsensus;
+      $("#riStatus").textContent = `AI Consensus: ${c.providers.join(" + ")}${c.score != null ? ` (${c.score}/100)` : ""}`;
+    }
     return true;
   } catch (err) {
     console.error("[results-analyze]", err);
@@ -7402,6 +7435,355 @@ async function loadIntegrationsConfig() {
   });
 })();
 
+// ================= AI PROVIDERS (multi-AI orchestration) =====================
+// Addendum #2, #30, #31, #23. Provider-agnostic; Local AI selalu tersedia.
+// API keys tidak pernah disentuh di renderer — hanya dikirim ke server untuk
+// disimpan (0600), dan server hanya mengembalikan status configured.
+
+const aiState = { providers: [], strategy: "balanced", usage: null, tasks: [], perTask: {} };
+
+async function loadAIProviders() {
+  const list = document.getElementById("aiProviderList");
+  if (list) list.innerHTML = '<div class="empty-state">Memuat provider AI&hellip;</div>';
+  try {
+    const [provRes, settingsRes, usageRes] = await Promise.all([
+      fetch("/api/ai/providers").then((r) => (r.ok ? r.json() : { providers: [] })),
+      fetch("/api/ai/settings").then((r) => (r.ok ? r.json() : {})),
+      fetch("/api/ai/usage").then((r) => (r.ok ? r.json() : {}))
+    ]);
+    aiState.providers = provRes.providers || [];
+    aiState.strategy = settingsRes.strategy || "balanced";
+    aiState.usage = usageRes.usage || null;
+    aiState.tasks = settingsRes.tasks || [];
+    aiState.perTask = settingsRes.perTask || {};
+    const strategySel = document.getElementById("aiStrategySelect");
+    if (strategySel && [...strategySel.options].some((o) => o.value === aiState.strategy)) {
+      strategySel.value = aiState.strategy;
+    }
+    const pill = document.getElementById("aiStrategyPill");
+    if (pill) pill.textContent = String(aiState.strategy).toUpperCase();
+    renderAIProviders();
+    renderAIUsage();
+    renderAITaskProfiles();
+  } catch {
+    if (list) list.innerHTML = '<div class="empty-state">AI orchestration tidak tersedia.</div>';
+  }
+}
+
+const AI_PROFILE_OPTIONS = [
+  ["local-only", "Local Only"],
+  ["low-cost", "Low Cost (1 AI)"],
+  ["fast", "FAST (1 AI, low latency)"],
+  ["balanced", "BALANCED (2 AI + consensus)"],
+  ["quality-first", "Quality First"],
+  ["deep", "DEEP (2-3 AI + cross-analysis)"],
+  ["maximum", "MAXIMUM (all enabled + consensus + QA)"]
+];
+
+// Per-task profile UI (#10, #22).
+function renderAITaskProfiles() {
+  const wrap = document.getElementById("aiTaskProfiles");
+  const count = document.getElementById("aiTaskCount");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  if (!aiState.tasks.length) {
+    wrap.innerHTML = '<div class="empty-state">Tidak ada task AI terdaftar.</div>';
+    if (count) count.textContent = "0";
+    return;
+  }
+  if (count) count.textContent = String(aiState.tasks.length);
+  for (const task of aiState.tasks) {
+    const row = document.createElement("div");
+    row.className = "ai-provider-row";
+    row.style.padding = "7px 14px";
+    row.style.borderBottom = "1px solid var(--line)";
+    const label = document.createElement("span");
+    label.textContent = task;
+    label.style.fontWeight = "600";
+    label.style.flex = "1";
+    const sel = document.createElement("select");
+    sel.className = "inspector-input";
+    sel.style.maxWidth = "280px";
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "— ikuti strategi global";
+    sel.appendChild(blank);
+    for (const [val, txt] of AI_PROFILE_OPTIONS) {
+      const o = document.createElement("option");
+      o.value = val;
+      o.textContent = txt;
+      if (aiState.perTask[task] === val) o.selected = true;
+      sel.appendChild(o);
+    }
+    sel.dataset.task = task;
+    row.append(label, sel);
+    wrap.appendChild(row);
+  }
+}
+
+function renderAIProviders() {
+  const list = document.getElementById("aiProviderList");
+  if (!list) return;
+  list.innerHTML = "";
+  if (!aiState.providers.length) {
+    list.innerHTML = '<div class="empty-state">Tidak ada AI provider.</div>';
+    return;
+  }
+  for (const p of aiState.providers) {
+    list.appendChild(aiProviderCard(p));
+  }
+}
+
+function aiProviderCard(p) {
+  const card = document.createElement("div");
+  card.className = "ai-provider-card";
+  card.dataset.provider = p.id;
+
+  const head = document.createElement("div");
+  head.className = "ai-provider-head";
+
+  const name = document.createElement("span");
+  name.className = "ai-provider-name";
+  name.textContent = p.name || p.id;
+  name.title = `${p.capabilities && p.capabilities.length ? p.capabilities.join(", ") : ""}`;
+
+  const status = document.createElement("span");
+  status.className = "ai-pill " + (p.builtIn ? "ok" : p.configured ? "ok" : "muted");
+  status.textContent = p.builtIn
+    ? "● Ready"
+    : p.configured
+      ? "● Connected"
+      : "○ Not Setup";
+
+  head.append(name, status);
+
+  const body = document.createElement("div");
+  body.className = "ai-provider-body";
+
+  if (!p.builtIn) {
+    // Model selector
+    const row1 = document.createElement("div");
+    row1.className = "ai-provider-row";
+    const mlabel = document.createElement("label");
+    mlabel.textContent = "Model:";
+    const msel = document.createElement("select");
+    msel.className = "inspector-input";
+    for (const m of (p.models || [])) {
+      const opt = document.createElement("option");
+      opt.value = m;
+      opt.textContent = m;
+      if (m === p.model) opt.selected = true;
+      msel.appendChild(opt);
+    }
+    msel.addEventListener("change", async () => {
+      if (!msel.value) return;
+      try {
+        await fetch(`/api/ai/providers/${encodeURIComponent(p.id)}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: msel.value })
+        });
+        showToast(`Model ${p.name} → ${msel.value}`);
+      } catch { showToast("Gagal mengganti model."); }
+    });
+    row1.append(mlabel, msel);
+    body.appendChild(row1);
+
+    // Enable/disable toggle
+    const row2 = document.createElement("div");
+    row2.className = "ai-provider-row";
+    const enLabel = document.createElement("label");
+    const enChk = document.createElement("input");
+    enChk.type = "checkbox";
+    enChk.checked = !!p.enabled;
+    enLabel.appendChild(enChk);
+    enLabel.appendChild(document.createTextNode("Enabled"));
+    enChk.addEventListener("change", async () => {
+      try {
+        await fetch(`/api/ai/providers/${encodeURIComponent(p.id)}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: enChk.checked })
+        });
+      } catch { enChk.checked = !enChk.checked; }
+    });
+    row2.append(enLabel, ...priorityControls(p));
+    body.appendChild(row2);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "ai-provider-actions";
+
+  if (p.builtIn) {
+    const testBtn = document.createElement("button");
+    testBtn.className = "ghost-button compact";
+    testBtn.type = "button";
+    testBtn.textContent = "TEST CONNECTION";
+    testBtn.addEventListener("click", async () => {
+      testBtn.disabled = true;
+      const r = await fetch("/api/ai/providers/local/test", { method: "POST" }).then((x) => x.json()).catch(() => null);
+      showToast(r && r.state ? `Local AI: ${r.state}` : "Local AI ready");
+      testBtn.disabled = false;
+    });
+    actions.appendChild(testBtn);
+  } else if (p.configured) {
+    const testBtn = document.createElement("button");
+    testBtn.className = "ghost-button compact";
+    testBtn.type = "button";
+    testBtn.textContent = "TEST";
+    testBtn.addEventListener("click", async () => {
+      testBtn.disabled = true;
+      const r = await fetch(`/api/ai/providers/${encodeURIComponent(p.id)}/test`, { method: "POST" }).then((x) => x.json()).catch(() => null);
+      showToast(r && r.state ? `Provider ${p.name}: ${r.state}` : "Test gagal.");
+      testBtn.disabled = false;
+      loadAIProviders();
+    });
+    actions.appendChild(testBtn);
+
+    const discBtn = document.createElement("button");
+    discBtn.className = "ghost-button compact";
+    discBtn.type = "button";
+    discBtn.textContent = "DISCONNECT";
+    discBtn.addEventListener("click", async () => {
+      await fetch(`/api/ai/providers/${encodeURIComponent(p.id)}/disconnect`, { method: "POST" }).catch(() => null);
+      showToast(`${p.name} disconnected (key dihapus).`);
+      loadAIProviders();
+    });
+    actions.appendChild(discBtn);
+  } else {
+    // Connect flow: API key input (tidak pernah disimpan di renderer)
+    const keyInput = document.createElement("input");
+    keyInput.type = "password";
+    keyInput.placeholder = "API Key (disimpan lokal, 0600)";
+    keyInput.setAttribute("autocomplete", "off");
+    const connBtn = document.createElement("button");
+    connBtn.className = "secondary-button compact";
+    connBtn.type = "button";
+    connBtn.textContent = "CONNECT";
+    connBtn.addEventListener("click", async () => {
+      const key = keyInput.value.trim();
+      if (!key) { showToast("Masukkan API key."); return; }
+      connBtn.disabled = true;
+      try {
+        const r = await fetch(`/api/ai/providers/${encodeURIComponent(p.id)}/connect`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ apiKey: key })
+        }).then((x) => x.json()).catch(() => ({ error: "Request gagal." }));
+        if (r.error) showToast(r.error);
+        else showToast(`${p.name} connected (${r.health && r.health.state || "OK"}).`);
+        loadAIProviders();
+      } finally {
+        connBtn.disabled = false;
+        keyInput.value = "";
+      }
+    });
+    actions.append(keyInput, connBtn);
+  }
+
+  body.appendChild(actions);
+  card.append(head, body);
+  return card;
+}
+
+function priorityControls(p) {
+  // Weight & priority (advanced, opsional)
+  const wrap = document.createElement("div");
+  wrap.className = "ai-provider-row";
+  wrap.style.gap = "8px";
+  wrap.append(Object.assign(document.createElement("span"), { textContent: "Priority:" }));
+  const sel = document.createElement("select");
+  sel.className = "inspector-input";
+  sel.style.maxWidth = "70px";
+  for (let i = 0; i <= 5; i++) {
+    const o = document.createElement("option");
+    o.value = String(i); o.textContent = String(i);
+    if (i === Number(p.priority) || (i === 0 && !p.priority)) o.selected = true;
+    sel.appendChild(o);
+  }
+  sel.addEventListener("change", async () => {
+    await fetch(`/api/ai/providers/${encodeURIComponent(p.id)}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ priority: Number(sel.value) })
+    }).catch(() => null);
+  });
+  wrap.appendChild(sel);
+  const wlabel = Object.assign(document.createElement("span"), { textContent: "Weight:" });
+  const wIn = document.createElement("input");
+  wIn.type = "number"; wIn.min = "0.1"; wIn.step = "0.1"; wIn.value = String(p.weight || 1);
+  wIn.className = "inspector-input";
+  wIn.style.maxWidth = "70px";
+  wIn.addEventListener("change", async () => {
+    await fetch(`/api/ai/providers/${encodeURIComponent(p.id)}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ weight: Number(wIn.value) || 1 })
+    }).catch(() => null);
+  });
+  wrap.append(wlabel, wIn);
+  return [wrap];
+}
+
+function renderAIUsage() {
+  const body = document.getElementById("aiUsageBody");
+  const count = document.getElementById("aiUsageCount");
+  if (!body) return;
+  const u = aiState.usage;
+  if (!u || !u.providers || !Object.keys(u.providers).length) {
+    body.innerHTML = '<div class="empty-state">Belum ada penggunaan AI.</div>';
+    if (count) count.textContent = "0";
+    return;
+  }
+  body.innerHTML = "";
+  const entries = Object.entries(u.providers);
+  if (count) count.textContent = String(entries.length);
+  for (const [id, p] of entries) {
+    const row = document.createElement("div");
+    row.className = "ai-usage-row";
+    const left = document.createElement("span");
+    left.textContent = id === "local" ? "Local AI" : id;
+    left.style.fontWeight = "600";
+    const right = document.createElement("b");
+    const tokens = p.tokenAvailable
+      ? ` · ${Number(p.promptTokens || 0).toLocaleString()} in / ${Number(p.completionTokens || 0).toLocaleString()} out tok`
+      : " · Usage: Not available";
+    right.textContent = `${p.requests} req${tokens}`;
+    right.title = tokens;
+    row.append(left, right);
+    body.appendChild(row);
+  }
+}
+
+// Strategy save
+document.addEventListener("DOMContentLoaded", () => {
+  const save = document.getElementById("aiStrategySaveBtn");
+  if (save) save.addEventListener("click", async () => {
+    const sel = document.getElementById("aiStrategySelect");
+    if (!sel) return;
+    await fetch("/api/ai/settings", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ strategy: sel.value })
+    }).catch(() => null);
+    const pill = document.getElementById("aiStrategyPill");
+    if (pill) pill.textContent = String(sel.value).toUpperCase();
+    showToast("Strategi AI diterapkan.");
+  });
+  const refresh = document.getElementById("aiRefreshBtn");
+  if (refresh) refresh.addEventListener("click", () => loadAIProviders());
+
+  // Per-task AI profiles (#10, #22)
+  const taskSave = document.getElementById("aiTaskSaveBtn");
+  if (taskSave) taskSave.addEventListener("click", async () => {
+    const wrap = document.getElementById("aiTaskProfiles");
+    if (!wrap) return;
+    const perTask = {};
+    for (const sel of wrap.querySelectorAll("select[data-task]")) {
+      if (sel.value) perTask[sel.dataset.task] = sel.value;
+    }
+    await fetch("/api/ai/settings", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ perTask })
+    }).catch(() => null);
+    showToast("Per-task AI profile diterapkan.");
+  });
+});
+
 // Publishing → SCHEDULE (local plan): pindah ke Calendar dengan export terpilih
 $("#pubScheduleBtn").addEventListener("click", () => {
   showView("calendar");
@@ -7461,6 +7843,7 @@ $$("[data-qview]").forEach((btn) => {
     if (view === "exports") loadExports();
     if (view === "calendar") { populateCalSources(); renderCalendar(); }
     if (view === "integrations") loadIntegrations();
+    if (view === "ai-providers") loadAIProviders();
   });
 });
 

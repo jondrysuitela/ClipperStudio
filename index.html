@@ -82,6 +82,9 @@
         <button class="nav-item" data-view="integrations" type="button">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M9 15l6-6"/><path d="M11 5l1-1a4 4 0 0 1 6 6l-1 1"/><path d="M13 19l-1 1a4 4 0 0 1-6-6l1-1"/></svg></span> <span class="nav-label">Integrations</span>
         </button>
+        <button class="nav-item" data-view="ai-providers" type="button">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M12 3l1.5 4.2 4.5 1.3-4.5 1.3L12 14l-1.5-4.2L6 8.5l4.5-1.3z"/><path d="M18.5 13l.8 2.3 2.2.7-2.2.7-.8 2.3-.8-2.3-2.2-.7 2.2-.7z"/></svg></span> <span class="nav-label">AI Providers</span>
+        </button>
       </nav>
     </div>
 
@@ -477,6 +480,9 @@
                 <option value="light">Filler: Light</option>
                 <option value="none">Filler: None (simpan semua)</option>
               </select>
+              <label class="audio-opt" style="margin-bottom:0; display:flex; align-items:center; gap:5px; font-size:12px; white-space:nowrap" title="AI menganalisis caption & memberi saran QA (butuh provider cloud terhubung; timing tetap lokal)">
+                <input type="checkbox" id="aiCaptionQA"> AI Caption QA
+              </label>
               <span id="captionStatus" class="caption-status"></span>
               <button class="primary-button compact" id="exportButton" type="button">Export selected clip</button>
             </div>
@@ -1094,6 +1100,56 @@
           <span class="dash-sub" id="integCredsHint"></span>
         </div>
       </details>
+    </div>
+
+    <!-- AI PROVIDERS — multi-AI orchestration (addendum #2, #30, #31, #23) -->
+    <div class="app-view page-view" data-view-panel="ai-providers">
+      <section class="panel res-hero">
+        <div>
+          <p class="eyebrow">AI Providers</p>
+          <h2>Multi-AI orchestration</h2>
+          <p class="dash-sub">Hubungkan beberapa AI provider untuk konsensus kualitas. Local AI selalu tersedia dan menjadi fallback otomatis — tanpa provider cloud pun aplikasi tetap berfungsi penuh.</p>
+        </div>
+        <button class="ghost-button compact" id="aiRefreshBtn" type="button">REFRESH</button>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading"><h2>AI STRATEGY</h2><span class="status-pill" id="aiStrategyPill">&mdash;</span></div>
+        <div class="res-intel-actions" style="padding:12px; gap:8px">
+          <select id="aiStrategySelect" class="inspector-input" title="Strategi: berapa banyak provider yang dipakai & konsensus">
+            <option value="local-only">Local Only — satu provider lokal, tanpa cloud</option>
+            <option value="low-cost">Low Cost — satu provider, murah & cepat</option>
+            <option value="fast">FAST — 1 AI, low latency (#10)</option>
+            <option value="balanced" selected>BALANCED — 2 provider + konsensus</option>
+            <option value="quality-first">Quality First — 2 provider, fokus kualitas</option>
+            <option value="deep">DEEP — 2-3 provider + cross-analysis (#10)</option>
+            <option value="maximum">MAXIMUM — semua provider + konsensus + QA</option>
+          </select>
+          <button class="secondary-button compact" id="aiStrategySaveBtn" type="button">TERAPKAN STRATEGI</button>
+        </div>
+        <p class="caption-hint" style="padding:0 14px 12px">Provider luar hanya dipakai bila sudah dikonfigurasi di bawah. Tanpa satupun, mode apa pun memakai Local AI.</p>
+      </section>
+
+      <section class="panel" id="aiProviderList" style="margin-top:14px" aria-label="AI providers">
+        <div class="empty-state">Memuat provider AI&hellip;</div>
+      </section>
+
+      <section class="panel" style="margin-top:14px">
+        <div class="panel-heading"><h2>PER-TASK PROFILE</h2><span class="status-pill" id="aiTaskCount">0</span></div>
+        <div class="table-list" id="aiTaskProfiles"><div class="empty-state">Memuat&hellip;</div></div>
+        <div class="res-intel-actions" style="padding:0 12px 12px">
+          <button class="secondary-button compact" id="aiTaskSaveBtn" type="button">SIMPAN PER-TASK PROFILE</button>
+        </div>
+        <p class="caption-hint" style="padding:0 14px 12px">Override strategi per tugas AI (#22). Kosongkan memakai strategi global di atas.</p>
+      </section>
+
+      <div class="ai-usage-grid" style="margin-top:14px">
+        <section class="panel">
+          <div class="panel-heading"><h2>AI USAGE</h2><span class="status-pill status-pill-running" id="aiUsageCount">0</span></div>
+          <div class="table-list" id="aiUsageBody"><div class="empty-state">Belum ada penggunaan.</div></div>
+          <p class="caption-hint" style="padding:0 14px 12px">Jika token tidak dapat ditentukan provider, ditampilkan "Not available" — bukan angka karangan.</p>
+        </section>
+      </div>
     </div>
 
     <div class="app-view page-view" data-view-panel="analytics">
