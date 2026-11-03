@@ -49,6 +49,15 @@ const state = {
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+// Escape terpusat untuk nilai dinamis yang masuk innerHTML. CSP
+// `script-src 'self'` mencegah eksekusi script, tetapi HTML injection
+// (overlay/element palsu) tetap mungkin terjadi; semua data non-literal lewat sini.
+const esc = (value) => String(value == null ? "" : value)
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;")
+  .replace(/'/g, "&#39;");
 
 function clipmeLangTag(language) {
   if (language === "English") return "en";
@@ -1090,7 +1099,7 @@ async function analyzeSpeakerForClip() {
         const trackText = trackId != null && trackId >= 0 ? `track #${trackId}` : "no-track";
         const mouth = Number(a.mouth_motion != null ? a.mouth_motion : (a.face && a.face.mouth_motion));
         const mouthText = Number.isFinite(mouth) && mouth > 0 ? mouth.toFixed(2) : "-";
-        dbgHtml += `<div style="font-family: monospace; font-size: 9px; padding: 2px 0;">[${s}s - ${e}s] ${a.speaker_id || "speaker"} → Face {x:${a.face?.x ?? "-"}, y:${a.face?.y ?? "-"}, conf:${confidenceText}, ${trackText}, mouth:${mouthText}}</div>`;
+        dbgHtml += `<div style="font-family: monospace; font-size: 9px; padding: 2px 0;">[${s}s - ${e}s] ${esc(a.speaker_id || "speaker")} → Face {x:${a.face?.x ?? "-"}, y:${a.face?.y ?? "-"}, conf:${confidenceText}, ${trackText}, mouth:${mouthText}}</div>`;
       });
       // Active-track + mouth-motion summary (requirement 13)
       const tracked = data.associations.filter((a) => a.track_id != null && a.track_id >= 0);
@@ -1256,56 +1265,6 @@ function renderLibrary() {
       }
     });
   });
-}
-
-function renderExports() {
-  if (!state.exports.length) {
-    exportsList.innerHTML = '<div class="empty-state">Belum ada export. Export clip dari Studio akan muncul di sini.</div>';
-    return;
-  }
-
-  exportsList.innerHTML = "";
-  state.exports.forEach((item) => {
-    const row = document.createElement("div");
-    row.className = "table-row";
-
-    const main = document.createElement("div");
-    const name = document.createElement("strong");
-    name.textContent = item.filename;
-    const meta = document.createElement("span");
-    meta.textContent = `${item.clipTitle} - ${item.createdAt}${item.size ? ` (${formatBytes(item.size)})` : ""}`;
-    main.appendChild(name);
-    main.appendChild(meta);
-
-    const status = document.createElement("span");
-    status.textContent = "Selesai";
-
-    const download = document.createElement("a");
-    download.className = "secondary-button compact";
-    download.href = item.downloadUrl;
-    download.setAttribute("download", item.filename);
-    download.textContent = "Download";
-
-    row.appendChild(main);
-    row.appendChild(status);
-    row.appendChild(download);
-    exportsList.appendChild(row);
-  });
-
-  const openBtn = document.createElement("button");
-  openBtn.className = "secondary-button compact";
-  openBtn.textContent = "Buka folder output";
-  openBtn.addEventListener("click", async () => {
-    try {
-      const r = await fetch("/api/open-output", { method: "POST" });
-      const j = await r.json();
-      if (r.ok) showToast("Folder output dibuka di File Explorer.");
-      else showToast(j.error || "Gagal membuka folder.");
-    } catch {
-      showToast("Gagal membuka folder output.");
-    }
-  });
-  exportsList.appendChild(openBtn);
 }
 
 function showView(view) {
@@ -3766,7 +3725,7 @@ function renderIntel(a) {
     for (const [key, val] of entries) {
       const chip = document.createElement("span");
       chip.className = "intel-dim";
-      chip.innerHTML = `${labels[key] || key} <b>${Math.round(val * 100)}%</b>`;
+      chip.innerHTML = `${esc(labels[key] || key)} <b>${Math.round(val * 100)}%</b>`;
       dimsEl.appendChild(chip);
     }
   } else {
@@ -6592,7 +6551,7 @@ function renderExports() {
       ["Ratio", item.ratio],
       ["Caption", item.caption],
       ["Hook", item.hook]
-    ].map(([k, v]) => `<span>${k}: <b>${v ? String(v).replace(/</g, "&lt;") : "—"}</b></span>`).join("");
+    ].map(([k, v]) => `<span>${k}: <b>${v ? esc(v) : "—"}</b></span>`).join("");
 
     const perfWrap = document.createElement("div");
     perfWrap.className = "perf-block";
@@ -7927,7 +7886,7 @@ function renderIntelligence(data) {
     for (const k of data.keywords.slice(0, 10)) {
       const chip = document.createElement("span");
       chip.className = "kw-chip";
-      chip.innerHTML = `${String(k.word).replace(/</g, "&lt;")}<b>${k.count}</b>`;
+      chip.innerHTML = `${esc(String(k.word))}<b>${k.count}</b>`;
       kwWrap.appendChild(chip);
     }
   }
@@ -8113,7 +8072,7 @@ $("#intelSearchBtn").addEventListener("click", async () => {
     }
   } catch (err) {
     console.error("[intel-search]", err);
-    wrap.innerHTML = `<div class="empty-state">${String(err.message || "Gagal mencari.").replace(/</g, "&lt;")}</div>`;
+    wrap.innerHTML = `<div class="empty-state">${esc(err.message || "Gagal mencari.")}</div>`;
   }
 });
 
