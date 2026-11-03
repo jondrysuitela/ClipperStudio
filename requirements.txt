@@ -1,0 +1,20 @@
+# Dependensi Python Clipper Studio (STT lokal, terjemahan offline, face detect).
+# Install ke venv di root repo:
+#   python -m venv .venv
+#   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+#
+# Catatan versi:
+# - av 19.x TIDAK kompatibel dengan faster-whisper 1.2.1: ia memanggil
+#   av.open(..., metadata_errors="ignore") yang sudah dihapus di av 19
+#   (TypeError: unexpected keyword argument 'metadata_errors').
+#   Pin ke 18.1.0 (versi terakhir yang masih menerima argumen tersebut).
+# - torch ikut terpasang karena argostranslate -> stanza membutuhkannya,
+#   sehingga ukuran venv ~1 GB.
+
+faster-whisper==1.2.1
+ctranslate2==4.8.5
+av==18.1.0
+argostranslate==1.11.0
+
+# Opsional: hanya dibutuhkan untuk Cut-to-Face / face tracking.
+opencv-python-headless>=4.10,<6
