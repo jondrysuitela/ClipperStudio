@@ -796,10 +796,21 @@ async function pollQueue() {
     const jobs = Array.isArray(data.jobs) ? data.jobs : [];
     updateEngineStatus(jobs);
     renderActiveJobs(jobs);
-    for (const el of [$("#queueList"), $("#procQueueList")].filter(Boolean)) {
-      renderQueueInto(el, jobs);
-    }
+    // Satu tempat untuk antrean penuh: panel Processing. Halaman Exports hanya
+    // menampilkan banner jumlah job aktif supaya tidak ada dua daftar yang sama.
+    const procQueue = $("#procQueueList");
+    if (procQueue) renderQueueInto(procQueue, jobs);
+    updateExportsJobsBanner(jobs);
   } catch {}
+}
+
+function updateExportsJobsBanner(jobs) {
+  const banner = $("#exportsJobs");
+  if (!banner) return;
+  const active = (jobs || []).filter((job) => job.status === "running" || job.status === "queued");
+  banner.hidden = active.length === 0;
+  const count = $("#exportsJobsCount");
+  if (count) count.textContent = String(active.length);
 }
 
 function renderQueueInto(el, jobs) {
@@ -6256,6 +6267,7 @@ if ($("#libNewProjectBtn")) $("#libNewProjectBtn").addEventListener("click", ope
 if ($("#sidebarNewProjectBtn")) $("#sidebarNewProjectBtn").addEventListener("click", openCreateWorkspace);
 if ($("#studioOpenCaptionsBtn")) $("#studioOpenCaptionsBtn").addEventListener("click", () => showView("captions"));
 if ($("#studioOpenExportsBtn")) $("#studioOpenExportsBtn").addEventListener("click", () => showView("exports"));
+if ($("#exportsOpenProcessingBtn")) $("#exportsOpenProcessingBtn").addEventListener("click", () => showView("processing"));
 if ($("#capOpenLibraryBtn")) $("#capOpenLibraryBtn").addEventListener("click", openTemplateGallery);
 if ($("#setOpenTemplates")) $("#setOpenTemplates").addEventListener("click", () => { showView("captions"); openTemplateGallery(); });
 if ($("#setOpenIntegrations")) $("#setOpenIntegrations").addEventListener("click", () => showView("integrations"));

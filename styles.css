@@ -2757,6 +2757,22 @@ textarea:focus-visible {
 .res-meta strong { display: block; margin-top: 2px; font-size: 13px; letter-spacing: 0; color: var(--text); }
 .res-hero-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 
+/* Banner job aktif di halaman Exports (antrean penuh tinggal di Processing) */
+.exports-jobs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  font-size: 12px;
+  color: var(--muted);
+}
+.exports-jobs[hidden] { display: none; }
+.exports-jobs-text { flex: 1; }
+
 /* Rail langkah: memberi urutan kerja yang sama dengan sidebar */
 .flow-steps {
   display: flex;

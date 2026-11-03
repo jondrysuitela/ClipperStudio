@@ -252,12 +252,17 @@ test("settings: speakerCut & faceTrack benar-benar masuk analisis lokal server",
 });
 
 // ── Phase 1: Dashboard / command center ─────────────────────────────────────
-test("dashboard: nav lengkap (7 view) & dashboard jadi landing default", () => {
+test("dashboard: nav lengkap & dashboard jadi landing default", () => {
   const html = fs.readFileSync("index.html", "utf8");
-  for (const v of ["dashboard", "library", "exports", "publish", "results", "analytics", "dna"]) {
+  for (const v of ["dashboard", "library", "exports", "publish", "results", "analytics"]) {
     assert.ok(html.includes(`data-view="${v}"`), `nav item ${v} must exist`);
     assert.ok(html.includes(`data-view-panel="${v}"`), `panel ${v} must exist`);
   }
+  // Content DNA tidak lagi berupa view placeholder: profil DNA yang nyata
+  // dirender di Analytics (#anDNA), jadi tidak ada lagi dua tempat bernama sama.
+  assert.ok(!html.includes('data-view="dna"'), "placeholder Content DNA nav removed");
+  assert.ok(!html.includes('data-view-panel="dna"'), "placeholder Content DNA panel removed");
+  assert.ok(html.includes('id="anDNA"'), "observed DNA stays inside Analytics");
   assert.ok(html.includes('data-view-panel="studio"'), "editor panel (studio) still exists — reachable via OPEN IN STUDIO");
   assert.ok(html.includes('data-view-panel="newproject"'), "dedicated new-project workspace panel exists");
   const dash = html.indexOf('data-view-panel="dashboard"');
@@ -318,12 +323,12 @@ test("dashboard: engine status real dari /api/system + localai + queue", () => {
   assert.doesNotMatch(fn, /"RTX|GTX/i, "tidak mengarang nama hardware");
 });
 
-test("dashboard: placeholder intelligence tanpa chart/statistik palsu", () => {
+test("dashboard: tidak ada placeholder palsu & tidak ada chart karangan", () => {
   const html = fs.readFileSync("index.html", "utf8");
-  // Phase 3: Results nyata; Phase 6: Analytics = honest unavailable + insights.
-  // Placeholder "Coming next" tersisa Content DNA saja.
+  // Semua workspace nyata: placeholder "Coming next" (Content DNA) sudah dihapus
+  // dan profil DNA-nya dirender di Analytics.
   const coming = (html.match(/Coming next/g) || []).length;
-  assert.strictEqual(coming, 1, "only Content DNA remains a future placeholder");
+  assert.strictEqual(coming, 0, "no future placeholder views left");
   assert.ok(html.includes('data-view-panel="results"'), "results panel exists");
   assert.ok(html.includes('id="resultsClipList"'), "results workspace is real, not placeholder");
   assert.match(html, /Belum ada data performa/, "analytics honestly reports missing ledger data");
@@ -844,9 +849,10 @@ test("phase6: production insights dari data export asli — tanpa klaim AI/predi
   assert.doesNotMatch(fn, /Math\.random|AI predicts|viral score predict/i, "no fabricated AI signals");
 });
 
-test("phase6: quick actions dashboard + nav lengkap (10 view)", () => {
+test("phase6: quick actions dashboard + nav lengkap (12 view)", () => {
   const html = fs.readFileSync("index.html", "utf8");
-  for (const v of ["dashboard", "library", "exports", "publish", "calendar", "results", "intel", "analytics", "dna", "integrations", "captions", "settings"]) {
+  // Content DNA tidak lagi view terpisah.
+  for (const v of ["dashboard", "library", "exports", "publish", "calendar", "results", "intel", "analytics", "integrations", "captions", "settings"]) {
     assert.ok(html.includes(`data-view="${v}"`), `nav ${v}`);
     if (v !== "dashboard") assert.ok(html.includes(`data-view-panel="${v}"`), `panel ${v}`);
   }
