@@ -1273,8 +1273,13 @@ function showView(view) {
     panel.classList.toggle("active", panel.dataset.viewPanel === view);
   });
   if (prevPanel && prevPanel.dataset.viewPanel === "captions" && view !== "captions") capPlayStop();
+  // Studio / New Project / Processing adalah layar alur, bukan tujuan sidebar.
+  // Sorot tujuan terdekat supaya posisi user tetap terbaca dari navigasi.
+  const navView = view === "studio" || view === "newproject"
+    ? "library"
+    : view === "processing" ? "exports" : view;
   $$(".nav-item").forEach((item) => {
-    const active = item.dataset.view === view;
+    const active = item.dataset.view === navView;
     item.classList.toggle("active", active);
     if (active) item.setAttribute("aria-current", "page");
     else item.removeAttribute("aria-current");
@@ -1289,6 +1294,27 @@ function showView(view) {
     renderCaptionsWorkspace();
   }
   if (view === "settings") fillSettingsView();
+  if (view === "studio") updateStudioHeader();
+}
+
+// Header Studio: konteks project aktif supaya layar ini tidak terasa lepas
+// dari alur (panel Source tinggal di New Project).
+function updateStudioHeader() {
+  const title = document.getElementById("studioTitle");
+  const meta = document.getElementById("studioMeta");
+  if (!title || !meta) return;
+  const hasProject = Boolean(state.projectId);
+  if (!hasProject) {
+    title.textContent = "Belum ada project";
+    meta.textContent = "Buka project dari Projects atau buat project baru untuk mulai mengedit clip.";
+    return;
+  }
+  const active = state.activeClip;
+  const named = active && active.title ? String(active.title).trim() : "";
+  title.textContent = named || state.sourceName || "Project aktif";
+  const bits = [`${clips.length} clip`];
+  if (state.sourceName) bits.push(state.sourceName);
+  meta.textContent = bits.join(" · ");
 }
 
 // Pindahkan panel eksisting ke workspace barunya (node move — ID/listener utuh).
@@ -5209,11 +5235,20 @@ async function checkEngineReadiness(force = false) {
 
   // Local AI: backend speaker/face nyata dari /api/localai/status.
   const be = ai && ai.aiBackend ? ai.aiBackend : {};
-  const spk = String(be.speaker || "");
-  const face = String(be.face || "");
-  const aiOn = (spk && spk !== "skip") || (face && face !== "skip");
+  // /api/localai/status mengembalikan objek { available, label }, bukan string —
+  // dulu diinterpolasi langsung sehingga tampil "[OBJECT OBJECT]".
+  const backendInfo = (value) => {
+    if (!value) return { label: "", available: false };
+    if (typeof value === "string") return { label: value, available: value !== "skip" };
+    const label = String(value.label || value.name || value.backend || value.source || "");
+    return { label, available: value.available !== false && label.toLowerCase() !== "skip" };
+  };
+  const spk = backendInfo(be.speaker);
+  const face = backendInfo(be.face);
+  const aiOn = spk.available || face.available;
+  const aiDetail = [spk.label, face.label].filter(Boolean).join("/").slice(0, 24).toUpperCase();
   setEr("erAi", ai ? (aiOn ? "ready" : "idle") : (sys ? "unknown" : "offline"),
-    ai ? (aiOn ? `READY · ${`${spk}/${face}`.slice(0, 20).toUpperCase()}` : "MODELS OFF") : (sys ? "UNKNOWN" : "OFFLINE"));
+    ai ? (aiOn ? `READY · ${aiDetail || "ON"}` : "MODELS OFF") : (sys ? "UNKNOWN" : "OFFLINE"));
 
   // Hook/Caption engine: module lokal yang di-require server saat boot —
   // server hidup berarti engine termuat; tidak ada klaim lebih jauh.
@@ -6219,6 +6254,8 @@ if ($("#backToProjectsBtn")) $("#backToProjectsBtn").addEventListener("click", (
 if ($("#npBackBtn")) $("#npBackBtn").addEventListener("click", () => showView("library"));
 if ($("#libNewProjectBtn")) $("#libNewProjectBtn").addEventListener("click", openCreateWorkspace);
 if ($("#sidebarNewProjectBtn")) $("#sidebarNewProjectBtn").addEventListener("click", openCreateWorkspace);
+if ($("#studioOpenCaptionsBtn")) $("#studioOpenCaptionsBtn").addEventListener("click", () => showView("captions"));
+if ($("#studioOpenExportsBtn")) $("#studioOpenExportsBtn").addEventListener("click", () => showView("exports"));
 if ($("#capOpenLibraryBtn")) $("#capOpenLibraryBtn").addEventListener("click", openTemplateGallery);
 if ($("#setOpenTemplates")) $("#setOpenTemplates").addEventListener("click", () => { showView("captions"); openTemplateGallery(); });
 if ($("#setOpenIntegrations")) $("#setOpenIntegrations").addEventListener("click", () => showView("integrations"));

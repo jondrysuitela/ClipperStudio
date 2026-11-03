@@ -2757,6 +2757,45 @@ textarea:focus-visible {
 .res-meta strong { display: block; margin-top: 2px; font-size: 13px; letter-spacing: 0; color: var(--text); }
 .res-hero-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 
+/* Rail langkah: memberi urutan kerja yang sama dengan sidebar */
+.flow-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.flow-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--muted-dim);
+  font: 600 10px/1 var(--font-mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.flow-steps li span { opacity: .7; }
+.flow-steps li[data-step-state="current"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.flow-steps li[data-step-state="current"] span { opacity: .6; }
+
+/* Header Studio: konteks project dalam satu baris */
+.studio-hero h2 {
+  max-width: 70ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.studio-hero .dash-sub { margin: 0; }
+
 .res-toolbar {
   display: grid;
   grid-template-columns: 1fr auto auto;
