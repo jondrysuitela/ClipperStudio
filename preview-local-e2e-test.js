@@ -10,6 +10,11 @@ const { execFileSync } = require("child_process");
 const FFMPEG = process.env.FFMPEG_PATH || path.join(__dirname, "bin", "ffmpeg.exe");
 const FFPROBE = process.env.FFPROBE_PATH || path.join(__dirname, "bin", "ffprobe.exe");
 
+if (!fs.existsSync(FFMPEG) || !fs.existsSync(FFPROBE)) {
+  console.log(`[SKIP] ${path.basename(__filename)}: butuh ffmpeg & ffprobe (${FFMPEG}).`);
+  process.exit(0);
+}
+
 (async () => {
   const projectId = crypto.randomUUID();
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "clipme-smoke-"));

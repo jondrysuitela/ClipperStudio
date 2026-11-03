@@ -4,12 +4,28 @@ const http = require("http");
 const os = require("os");
 const cp = require("child_process");
 
+// Isolasi data: test ini menboot server sungguhan, dan startServer() memanggil
+// cleanupOldData() yang menghapus tmp/ serta project > 30 hari. Tanpa env ini,
+// `npm test` bisa menghapus data kerja nyata di folder repo.
+process.env.CLIPFORGE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "clipper-phase3-"));
+
 const results = [];
+const FFMPEG = process.env.FFMPEG_PATH || path.join(__dirname, "bin", "ffmpeg.exe");
+const hasFfmpeg = () => fs.existsSync(FFMPEG);
+function skip(reason) {
+  const err = new Error(reason);
+  err.code = "SKIP";
+  throw err;
+}
 async function t(name, fn) {
   try {
     await fn();
     results.push({ name, status: "PASS" });
   } catch (e) {
+    if (e && e.code === "SKIP") {
+      results.push({ name, status: "SKIP", error: String(e.message) });
+      return;
+    }
     results.push({ name, status: "FAIL", error: String(e && e.stack || e) });
   }
 }
@@ -130,8 +146,9 @@ let srv;
   } catch {}
   if (!testVideoBuffer) {
     await t("H-07: prepare tiny real MP4 via bundled ffmpeg", () => {
+      if (!hasFfmpeg()) skip(`butuh ffmpeg di ${FFMPEG}`);
       const out = path.join(os.tmpdir(), "clipforge-phase3-test.mp4");
-      cp.execFileSync(path.join("bin", "ffmpeg.exe"), [
+      cp.execFileSync(FFMPEG, [
         "-y", "-f", "lavfi", "-i", "testsrc=duration=1:size=128x128:rate=5",
         "-c:v", "libx264", "-pix_fmt", "yuv420p", out
       ], { stdio: "pipe" });
@@ -141,6 +158,7 @@ let srv;
   }
 
   await t("H-07: real multipart upload via server (valid small video)", async () => {
+    if (!testVideoBuffer) skip("butuh ffmpeg untuk membuat MP4 uji");
     if (!srv) {
       srv = await bootServer();
     }
@@ -165,6 +183,7 @@ let srv;
   });
 
   await t("H-07: upload with binary CRLF + boundary-LIKE bytes preserved", async () => {
+    if (!testVideoBuffer) skip("butuh ffmpeg untuk membuat MP4 uji");
     if (!srv) srv = await bootServer();
     // Use a DIFFERENT boundary string so the "fake" marker inside the body is
     // merely boundary-like, not the real delimiter. Real multipart clients pick
@@ -174,7 +193,7 @@ let srv;
       Buffer.from("\r\n--different-boundary-xyz\r\nfake-inside"),
       testVideoBuffer.subarray(1000, 2000)
     ]);
-    const before = fs.readdirSync("tmp").filter((n) => n.startsWith("parts-") || n.startsWith("upload-"));
+    const before = fs.readdirSync(path.join(process.env.CLIPFORGE_DATA_DIR, "tmp")).filter((n) => n.startsWith("parts-") || n.startsWith("upload-"));
     const body = buildMultipart(
       { duration: "45" },
       [{ name: "video", filename: "weird.mp4", type: "video/mp4", data: bytes }]
@@ -184,7 +203,7 @@ let srv;
     // Either way the parser must not crash and must clean up all temp artifacts.
     if (res.status !== 200 && res.status !== 500) throw new Error("unexpected status " + res.status + " body: " + res.body.slice(0, 200));
     await new Promise((r) => setTimeout(r, 300));
-    const after = fs.readdirSync("tmp").filter((n) => n.startsWith("parts-") || n.startsWith("upload-"));
+    const after = fs.readdirSync(path.join(process.env.CLIPFORGE_DATA_DIR, "tmp")).filter((n) => n.startsWith("parts-") || n.startsWith("upload-"));
     const leaked = after.filter((n) => !before.includes(n));
     if (leaked.length) throw new Error("temp files leaked: " + leaked.join(", "));
   });
@@ -290,12 +309,14 @@ let srv;
 
   // ---------- output ----------
   let fails = 0;
+  let skipped = 0;
   for (const r of results) {
-    const icon = r.status === "PASS" ? "OK  " : "FAIL";
+    const icon = r.status === "PASS" ? "OK  " : r.status === "SKIP" ? "SKIP" : "FAIL";
     console.log(`[${icon}] ${r.name}`);
-    if (r.status !== "PASS") { fails++; if (r.error) console.log(`       ${String(r.error).split("\n")[0]}`); }
+    if (r.status === "SKIP") { skipped++; continue; }
+    if (r.status === "FAIL") { fails++; if (r.error) console.log(`       ${String(r.error).split("\n")[0]}`); }
   }
-  console.log(`\n${results.length - fails}/${results.length} passed`);
+  console.log(`\n${results.length - fails - skipped}/${results.length - skipped} passed${skipped ? ` (${skipped} skipped)` : ""}`);
   if (srv) {
     try { srv.server.closeAllConnections?.(); } catch {}
     try { await new Promise((r) => { srv.server.close(() => r()); setTimeout(r, 3000); }); } catch {}

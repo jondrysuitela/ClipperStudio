@@ -11,6 +11,11 @@ const { execFileSync } = require("child_process");
 
 const FFMPEG = process.env.FFMPEG_PATH || path.join(__dirname, "bin", "ffmpeg.exe");
 
+if (!fs.existsSync(FFMPEG)) {
+  console.log(`[SKIP] ${path.basename(__filename)}: butuh ffmpeg (${FFMPEG}).`);
+  process.exit(0);
+}
+
 (async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "clipme-hooktoggle-"));
   process.env.CLIPFORGE_DATA_DIR = dataDir;

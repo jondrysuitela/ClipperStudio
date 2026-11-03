@@ -2,14 +2,27 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const cp = require("child_process");
+// Isolasi data sebelum server dimuat: lihat catatan di phase3-test.js.
+process.env.CLIPFORGE_DATA_DIR = fs.mkdtempSync(path.join(require("os").tmpdir(), "clipper-phase4b-"));
 const { startServer } = require("./server.js");
 
 const results = [];
+const FFMPEG = process.env.FFMPEG_PATH || path.join(__dirname, "bin", "ffmpeg.exe");
+const hasFfmpeg = () => fs.existsSync(FFMPEG);
+function skip(reason) {
+  const err = new Error(reason);
+  err.code = "SKIP";
+  throw err;
+}
 async function t(name, fn) {
   try {
     await fn();
     results.push({ name, status: "PASS" });
   } catch (e) {
+    if (e && e.code === "SKIP") {
+      results.push({ name, status: "SKIP", error: String(e.message) });
+      return;
+    }
     results.push({ name, status: "FAIL", error: String(e && e.message || e) });
   }
 }
@@ -111,9 +124,10 @@ let projectId = null;
 
   // ---------- live batch endpoints smoke ----------
   await t("M-10/M-07: prepare real project via upload", async () => {
+    if (!hasFfmpeg()) skip(`butuh ffmpeg di ${FFMPEG}`);
     if (!srv) srv = await startServer(0, "127.0.0.1");
-    const vid = path.join("tmp", "phase4b.mp4");
-    cp.execFileSync(path.join("bin", "ffmpeg.exe"), ["-y", "-f", "lavfi", "-i", "testsrc=duration=1:size=96x54:rate=5", "-c:v", "libx264", "-pix_fmt", "yuv420p", vid], { stdio: "pipe" });
+    const vid = path.join(process.env.CLIPFORGE_DATA_DIR, "tmp", "phase4b.mp4");
+    cp.execFileSync(FFMPEG, ["-y", "-f", "lavfi", "-i", "testsrc=duration=1:size=96x54:rate=5", "-c:v", "libx264", "-pix_fmt", "yuv420p", vid], { stdio: "pipe" });
     const video = fs.readFileSync(vid);
     const r = await post(srv.port, "/api/upload", mp({ duration: "30" }, [{ name: "video", filename: "phase4b.mp4", type: "video/mp4", data: video }]), "multipart/form-data; boundary=" + B);
     if (r.status !== 200) throw new Error("upload failed: " + r.status + " " + JSON.stringify(r.json));
@@ -122,6 +136,7 @@ let projectId = null;
   });
 
   await t("M-10/M-07: POST /api/export-batch with bad ratio -> 400", async () => {
+    if (!projectId) skip("butuh project hasil upload (ffmpeg)");
     if (!srv) srv = await startServer(0, "127.0.0.1");
     const body = JSON.stringify({ projectId, clips: [{ clipId: 1, start: 0, end: 10, ratio: "banana" }] });
     const r = await post(srv.port, "/api/export-batch", body, "application/json");
@@ -129,6 +144,7 @@ let projectId = null;
   });
 
   await t("M-10/M-09: POST /api/export-batch valid -> 202 with job", async () => {
+    if (!projectId) skip("butuh project hasil upload (ffmpeg)");
     if (!srv) srv = await startServer(0, "127.0.0.1");
     const body = JSON.stringify({ projectId, clips: [
       { clipId: 1, start: 0, end: 10, ratio: "portrait" },
@@ -160,11 +176,13 @@ let projectId = null;
   }
 
   let fails = 0;
+  let skipped = 0;
   for (const r of results) {
-    const icon = r.status === "PASS" ? "OK  " : "FAIL";
+    const icon = r.status === "PASS" ? "OK  " : r.status === "SKIP" ? "SKIP" : "FAIL";
     console.log(`[${icon}] ${r.name}`);
-    if (r.status !== "PASS") { fails++; if (r.error) console.log(`       ${String(r.error).split("\n")[0]}`); }
+    if (r.status === "SKIP") { skipped++; continue; }
+    if (r.status === "FAIL") { fails++; if (r.error) console.log(`       ${String(r.error).split("\n")[0]}`); }
   }
-  console.log(`\n${results.length - fails}/${results.length} passed`);
+  console.log(`\n${results.length - fails - skipped}/${results.length - skipped} passed${skipped ? ` (${skipped} skipped)` : ""}`);
   process.exit(fails ? 1 : 0);
 })().catch((e) => { console.error("HARNESS ERROR", e); process.exit(1); });

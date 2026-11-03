@@ -4,7 +4,7 @@
 // Indonesian but preview stays English".
 const assert = require("assert");
 
-const { _test } = require("D:/PROJEK CODING/clipme/server.js");
+const { _test } = require("./server.js");
 const { wordsAlignWithSegmentText, flattenTranscriptWords } = _test;
 
 const results = [];
