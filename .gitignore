@@ -24,3 +24,15 @@ integrations.json
 .env
 *.key
 *.pem
+
+# kredensial & media hasil (jangan pernah commit)
+cookies.txt
+*.mp4
+
+# artefak tooling lokal
+.zwork/
+
+# cache HuggingFace lokal
+blobs/
+.locks/
+models--*/
