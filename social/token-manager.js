@@ -1,26 +1,21 @@
 // Token Manager — kredensial OAuth TIDAK PERNAH keluar dari layer ini.
-// Disimpan di luar repo: ~/.clipper-studio/social-tokens.json (0600).
-const fs = require("fs");
+// Disimpan di luar repo: ~/.clipper-studio/social-tokens.json
+//   - di dalam Electron: terenkripsi safeStorage (DPAPI/Keychain/libsecret)
+//   - via `node server.js`: plaintext 0600 (safeStorage tidak tersedia)
 const os = require("os");
 const path = require("path");
+const secureStore = require("./secure-store");
 
 const STORE_DIR = process.env.CLIPPER_DATA_DIR || path.join(os.homedir(), ".clipper-studio");
 const STORE_FILE = path.join(STORE_DIR, "social-tokens.json");
 
 function loadAll() {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(STORE_FILE, "utf8"));
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
+  const parsed = secureStore.readJson(STORE_FILE, {});
+  return parsed && typeof parsed === "object" ? parsed : {};
 }
 
 function saveAll(all) {
-  fs.mkdirSync(STORE_DIR, { recursive: true });
-  try { fs.chmodSync(STORE_DIR, 0o700); } catch {}
-  fs.writeFileSync(STORE_FILE, JSON.stringify(all, null, 2), { mode: 0o600 });
-  try { fs.chmodSync(STORE_FILE, 0o600); } catch {}
+  secureStore.writeJsonAtomic(STORE_FILE, all, { mode: 0o600 });
 }
 
 module.exports = {
@@ -43,6 +38,8 @@ module.exports = {
     const t = loadAll()[provider];
     return Boolean(t && t.access_token && (!t.expires_at || t.expires_at > Date.now() + 30000));
   },
-  // Jangan pernah memanggil ini ke arah renderer.
-  _dangerousRawRead: undefined
+  // Status penyimpanan untuk UI/endpoint /api/system — tanpa isi token.
+  storageInfo() {
+    return { file: STORE_FILE, ...secureStore.encryptionInfo() };
+  }
 };

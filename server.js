@@ -43,10 +43,38 @@ const UPLOAD_DIR = path.join(DATA_ROOT, "uploads");
 const OUTPUT_DIR = path.join(DATA_ROOT, "outputs");
 const TMP_DIR = path.join(DATA_ROOT, "tmp");
 const PORT = Number(process.env.PORT || 4173);
+// Token API opsional. Kosong = nonaktif (mode default loopback, cukup dijaga
+// Host/Origin guard). Saat server dibuka ke LAN (HOST non-loopback), token
+// dibuat otomatis supaya seluruh API tidak terbuka bebas di jaringan.
+let apiToken = "";
+let apiTokenIsLoopback = true;
 const BIN_DIR = process.env.CLIPFORGE_BIN_DIR || (isPackaged ? path.join(RESOURCE_ROOT, "bin") : path.join(ROOT, "bin"));
-const YTDLP = process.env.YTDLP_PATH || path.join(BIN_DIR, "yt-dlp.exe");
-const FFMPEG = process.env.FFMPEG_PATH || path.join(BIN_DIR, "ffmpeg.exe");
-const FFPROBE = process.env.FFPROBE_PATH || path.join(BIN_DIR, "ffprobe.exe");
+
+// Cari binary di PATH sistem. Aplikasi tetap jalan ketika user sudah punya
+// ffmpeg/yt-dlp global (winget/scoop/choco) tanpa menaruhnya manual di bin/.
+// Urutan resolusi: env var > bin/ > PATH.
+function findOnPath(exeName) {
+  const exts = process.platform === "win32" ? ["", ".exe", ".cmd", ".bat"] : [""];
+  const dirs = String(process.env.PATH || "").split(path.delimiter).filter(Boolean);
+  for (const dir of dirs) {
+    for (const ext of exts) {
+      const candidate = path.join(dir, exeName + ext);
+      try { if (fs.existsSync(candidate)) return candidate; } catch {}
+    }
+  }
+  return "";
+}
+
+function resolveBinary(envValue, fileName) {
+  if (envValue) return envValue;
+  const bundled = path.join(BIN_DIR, fileName);
+  if (fs.existsSync(bundled)) return bundled;
+  return findOnPath(fileName.replace(/\.exe$/i, "")) || bundled;
+}
+
+const YTDLP = resolveBinary(process.env.YTDLP_PATH, "yt-dlp.exe");
+const FFMPEG = resolveBinary(process.env.FFMPEG_PATH, "ffmpeg.exe");
+const FFPROBE = resolveBinary(process.env.FFPROBE_PATH, "ffprobe.exe");
 // YouTube's SABR-only streaming experiment (yt-dlp#12482) makes several clients
 // return 403 on range/segment requests. Excluding android_sdkless keeps stable
 // non-SABR URLs. Client order balances resilience AND resolution:
@@ -605,13 +633,18 @@ function findVenvPython() {
   if (process.env.CLIPFORGE_VENV_PYTHON) return process.env.CLIPFORGE_VENV_PYTHON;
   const candidates = [
     path.join(ROOT, ".venv", "Scripts", "python.exe"),
+    // Layout Python embeddable (python.exe di root venv, tanpa folder Scripts).
+    path.join(ROOT, ".venv", "python.exe"),
     path.join(ROOT, "venv", "Scripts", "python.exe"),
+    path.join(ROOT, "venv", "python.exe"),
     path.join(path.dirname(ROOT), ".venv", "Scripts", "python.exe")
   ];
   if (isPackaged) {
     candidates.unshift(
       path.join(RESOURCE_ROOT, ".venv", "Scripts", "python.exe"),
-      path.join(RESOURCE_ROOT, "venv", "Scripts", "python.exe")
+      path.join(RESOURCE_ROOT, ".venv", "python.exe"),
+      path.join(RESOURCE_ROOT, "venv", "Scripts", "python.exe"),
+      path.join(RESOURCE_ROOT, "venv", "python.exe")
     );
   }
   for (const candidate of candidates) {
@@ -706,6 +739,17 @@ setInterval(() => {
   }
 }, 300000).unref();
 
+// Slot queue harus dilepas tepat sekali. Worker yang hang tidak akan pernah
+// menyelesaikan promise-nya sehingga .finally() tidak jalan; watchdog harus
+// melepas slot sendiri, dan .finally() harus idempoten (tanpa ini, job yang
+// kena timeout menahan slot selamanya dan antrean berhenti permanen).
+function releaseJobSlot(job) {
+  if (!job || job.slotReleased) return;
+  job.slotReleased = true;
+  activeJobs = Math.max(0, activeJobs - 1);
+  pumpJobs();
+}
+
 // Timeout per-job (worker hang): kill child + reject supaya slot tidak terkunci.
 function armJobWatchdog(job) {
   if (job._watchdog) return;
@@ -720,6 +764,7 @@ function armJobWatchdog(job) {
     job.children.clear();
     if (job.workerCleanup) job.workerCleanup();
     if (job._reject) job._reject(new Error(job.error));
+    releaseJobSlot(job);
   }, JOB_MAX_RUNTIME);
   job._watchdog.unref && job._watchdog.unref();
 }
@@ -734,8 +779,42 @@ function sendJson(res, status, data) {
 }
 
 function isSafePath(target, base) {
-  const resolved = path.resolve(base, target);
-  return resolved.startsWith(base + path.sep) || resolved === base;
+  const resolvedBase = path.resolve(base);
+  const resolved = path.resolve(resolvedBase, target);
+  const same = process.platform === "win32"
+    ? (a, b) => a.toLowerCase() === b.toLowerCase()
+    : (a, b) => a === b;
+  const within = (child, parent) => same(child, parent) || child.toLowerCase().startsWith(parent.toLowerCase() + path.sep);
+  if (!within(resolved, resolvedBase)) return false;
+  // Symlink/junction di uploads/ atau outputs/ bisa menunjuk keluar base:
+  // bandingkan realpath bila kedua sisi benar-benar ada.
+  try {
+    const realBase = fs.realpathSync(resolvedBase);
+    const realTarget = fs.realpathSync(resolved);
+    return within(realTarget, realBase);
+  } catch {
+    // Path belum ada (mis. file output yang akan dibuat): cukup cek leksikal.
+    return true;
+  }
+}
+
+function readCookie(header, name) {
+  const raw = String(header || "");
+  for (const part of raw.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx === -1) continue;
+    if (part.slice(0, idx).trim() === name) return decodeURIComponent(part.slice(idx + 1).trim());
+  }
+  return "";
+}
+
+function escapeHtml(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function isValidUUID(value) {
@@ -956,17 +1035,30 @@ function killProcess(child) {
   } catch {}
 }
 
+// Env untuk semua subprocess (ffmpeg/yt-dlp/python).
+// - TMP diarahkan ke folder app supaya file sementara tidak menumpuk di %TEMP% user.
+// - PYTHONNOUSERSITE/PYTHONHOME: venv yang dibundel harus mandiri; jangan sampai
+//   Python memuat site-packages global mesin user atau menunjuk instalasi lain.
+function childEnv(extra = {}) {
+  const env = {
+    ...process.env,
+    TMP: TMP_DIR,
+    TEMP: TMP_DIR,
+    TMPDIR: TMP_DIR,
+    FONTCONFIG_PATH: TMP_DIR,
+    PYTHONNOUSERSITE: "1",
+    PYTHONIOENCODING: "utf-8",
+    ...extra
+  };
+  delete env.PYTHONHOME;
+  return env;
+}
+
 function run(command, args, timeoutMs = 300000, childSink = null, onProgress = null) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       windowsHide: true,
-      env: {
-        ...process.env,
-        TMP: TMP_DIR,
-        TEMP: TMP_DIR,
-        TMPDIR: TMP_DIR,
-        FONTCONFIG_PATH: TMP_DIR
-      }
+      env: childEnv()
     });
     activeChildren.add(child);
     if (childSink) childSink.add(child);
@@ -974,7 +1066,7 @@ function run(command, args, timeoutMs = 300000, childSink = null, onProgress = n
     let stderr = "";
     let timedOut = false;
 
-    // â”€â”€ Real progress tracking â”€â”€
+    // --- Real progress tracking ---
     // ffmpeg: parse out_time_ms from `-progress pipe:1` (requires the -t arg).
     // yt-dlp/stt/other: parse the trailing `NN%` from stderr progress lines.
     const tIndex = args.indexOf("-t");
@@ -1031,6 +1123,16 @@ function run(command, args, timeoutMs = 300000, childSink = null, onProgress = n
     child.on("error", (err) => {
       cleanup();
       clearTimeout(timer);
+      if (err && err.code === "ENOENT") {
+        // Binary hilang adalah kesalahan setup, bukan bug logika: beri pesan
+        // yang bisa ditindaklanjuti, bukan "spawn ENOENT".
+        reject(new Error(
+          `Binary tidak ditemukan: ${command}. Taruh di "${BIN_DIR}" ` +
+          "atau set env FFMPEG_PATH / FFPROBE_PATH / YTDLP_PATH / CLIPFORGE_BIN_DIR. " +
+          "Lihat README bagian \"Prasyarat & Setup\"."
+        ));
+        return;
+      }
       reject(err);
     });
     child.on("close", (code) => {
@@ -2684,7 +2786,14 @@ function writeProjectManifest(projectDir, data) {
 function readProjectManifest(projectDir) {
   const manifestPath = path.join(projectDir, "project.json");
   if (!fs.existsSync(manifestPath)) return {};
-  return JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  // Manifest bisa korup kalau proses mati saat menulis (tidak ada atomic
+  // rename). Jangan biarkan satu file rusak mematikan semua route project.
+  try {
+    return JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  } catch (error) {
+    console.warn(`[Manifest] Gagal membaca ${manifestPath}: ${error.message}`);
+    return {};
+  }
 }
 
 function ffmpegText(value) {
@@ -2909,6 +3018,11 @@ function escDrawtext(value) {
     .replace(/"/g, "\u201C");
   return safe
     .replace(/\\/g, "\\\\")
+    // Titik dua WAJIB di-escape: di dalam `text='...'` ffmpeg tetap memecah
+    // opsi pada ':', sehingga caption seperti "Kata kunci: ini" membuat
+    // filter gagal ("No option name near ..."). Terbukti lewat uji langsung
+    // terhadap ffmpeg: 'a: b' gagal, 'a\: b' berhasil.
+    .replace(/:/g, "\\:")
     .replace(/,/g, "\\,")
     .replace(/\[/g, "\\[")
     .replace(/\]/g, "\\]")
@@ -4000,6 +4114,7 @@ function pumpJobs() {
       continue;
     }
     activeJobs += 1;
+    job.slotReleased = false;
     job.status = "running";
     job.progress = Math.max(job.progress, 10);
     armJobWatchdog(job);
@@ -4037,8 +4152,7 @@ function pumpJobs() {
         }
         if (job._watchdog) { clearTimeout(job._watchdog); job._watchdog = null; }
         delete job.worker;
-        activeJobs -= 1;
-        pumpJobs();
+        releaseJobSlot(job);
       });
   }
 }
@@ -4184,21 +4298,24 @@ async function exportClip(payload, setProgress = () => {}, children = null, opti
     if (fs.existsSync(localaiCachePath)) {
       analyzeResult = JSON.parse(fs.readFileSync(localaiCachePath, "utf8"));
     } else {
+      // Analisis dijalankan INLINE di dalam job export ini. Sebelumnya blok ini
+      // memanggil createJob("localai-analyze") dari dalam worker job; dengan
+      // MAX_ACTIVE_JOBS=2 dua export speakerCut bersamaan saling menunggu job
+      // yang antre di belakang mereka, dan antrean macet sampai watchdog
+      // (default 2 jam). Inline = tidak ada job bersarang.
       setProgress(30);
-      const analyzeJob = createJob("localai-analyze", async (p, c) => {
-        const t = await localAIModule.analyzeForSpeakerCut(analyzeJobPayload, p, c);
-        t.associations = localAIModule.associateSpeakerWithFace(t.speakerTimeline, t.faceTimeline, {
-          sourceWidth: sourceVideoWidth,
-          sourceHeight: sourceVideoHeight,
-          targetAspect: resolveRatio(payload.ratio)
-        });
-        const localaiDir = path.join(projectDir, "localai");
-        fs.mkdirSync(localaiDir, { recursive: true });
-        fs.writeFileSync(localaiCachePath, JSON.stringify(t), "utf8");
-        return t;
+      analyzeResult = await localAIModule.analyzeForSpeakerCut(analyzeJobPayload);
+      if (analyzeResult && analyzeResult.error) {
+        throw new Error(`LocalAI Analyze gagal: ${analyzeResult.error}`);
+      }
+      analyzeResult.associations = localAIModule.associateSpeakerWithFace(analyzeResult.speakerTimeline, analyzeResult.faceTimeline, {
+        sourceWidth: sourceVideoWidth,
+        sourceHeight: sourceVideoHeight,
+        targetAspect: resolveRatio(payload.ratio)
       });
-      analyzeResult = await analyzeJob.promise;
-      if (analyzeResult.error) throw new Error(`LocalAI Analyze job failed: ${analyzeResult.error}`);
+      const localaiDir = path.join(projectDir, "localai");
+      fs.mkdirSync(localaiDir, { recursive: true });
+      fs.writeFileSync(localaiCachePath, JSON.stringify(analyzeResult), "utf8");
     }
     setProgress(55);
 
@@ -4336,7 +4453,7 @@ function clipTranscriptConfigHash(payload = {}) {
   const config = [
     process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe",
     payload.model || process.env.LOCAL_WHISPER_MODEL || "tiny",
-    process.env.LOCAL_WHISPER_DEVICE || "cpu",
+    process.env.LOCAL_WHISPER_DEVICE || "auto",
     process.env.LOCAL_WHISPER_COMPUTE_TYPE || "int8"
   ].join("|");
   return crypto.createHash("sha1").update(config).digest("hex").slice(0, 6);
@@ -6012,6 +6129,12 @@ async function handleProjectConfig(req, res, params) {
   const projectId = params.projectId || "";
   if (!isValidUUID(projectId)) { sendJson(res, 400, { error: "Invalid project ID" }); return; }
   const projectDir = path.join(UPLOAD_DIR, projectId);
+  // {} bersifat truthy: cek file manifest langsung, bukan objek hasil parse,
+  // supaya project yang tidak ada benar-benar 404 (bukan 200 "tersimpan").
+  if (!fs.existsSync(path.join(projectDir, "project.json"))) {
+    sendJson(res, 404, { error: "Project tidak ditemukan." });
+    return;
+  }
   const manifest = readProjectManifest(projectDir);
   if (!manifest) { sendJson(res, 404, { error: "Project tidak ditemukan." }); return; }
   collectRequest(req, 1).then((buf) => {
@@ -6022,7 +6145,12 @@ async function handleProjectConfig(req, res, params) {
     const clean = {};
     for (const k of allowed) if (cfg[k] !== undefined && cfg[k] !== null) clean[k] = typeof cfg[k] === "string" ? String(cfg[k]).slice(0, 140) : cfg[k];
     manifest.createConfig = { ...(manifest.createConfig || {}), ...clean };
-    try { fs.writeFileSync(path.join(projectDir, "project.json"), JSON.stringify(manifest, null, 2)); } catch {}
+    try {
+      fs.writeFileSync(path.join(projectDir, "project.json"), JSON.stringify(manifest, null, 2));
+    } catch (error) {
+      sendJson(res, 500, { error: `Gagal menyimpan konfigurasi: ${error.message}` });
+      return;
+    }
     sendJson(res, 200, { ok: true, createConfig: manifest.createConfig });
   }).catch(() => sendJson(res, 400, { error: "Invalid JSON" }));
 }
@@ -6277,6 +6405,12 @@ function handleSavePerf(req, res, params) {
     perf.updatedAt = Date.now();
     fs.writeFileSync(fpath, JSON.stringify(perf, null, 2));
     sendJson(res, 200, { ok: true, perf });
+  }).catch((error) => {
+    // Tanpa catch ini, kegagalan tulis (ENOSPC/EACCES) menjadi unhandled
+    // rejection yang mematikan proses Node/Electron.
+    if (res.headersSent) return;
+    const code = error && (error.code === "ENOSPC" || error.code === "EACCES") ? 507 : 400;
+    sendJson(res, code, { error: (error && error.message) || "Gagal menyimpan data perf." });
   });
 }
 
@@ -6331,6 +6465,15 @@ function handleSystemInfo(req, res) {
       model,
       pythonAvailable: pythonOk,
       ffmpegAvailable: ffmpegOk,
+      tools: {
+        binDir: BIN_DIR,
+        ffmpeg: { path: FFMPEG, available: fs.existsSync(FFMPEG) },
+        ffprobe: { path: FFPROBE, available: fs.existsSync(FFPROBE) },
+        ytdlp: { path: YTDLP, available: fs.existsSync(YTDLP) }
+      },
+      credentials: (() => {
+        try { return { socialTokens: socialTokens.storageInfo() }; } catch { return { socialTokens: null }; }
+      })(),
       sttEnabled: !!(process.env.OPENAI_API_KEY || pythonOk),
 
       // ── Hardware detection (baru) ──
@@ -7089,7 +7232,14 @@ async function handleClipThumb(req, res, params) {
   }
   if (!fs.existsSync(thumbPath)) { sendJson(res, 500, { error: "Thumbnail tidak tersedia." }); return; }
   res.writeHead(200, { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" });
-  fs.createReadStream(thumbPath).pipe(res);
+  fs.createReadStream(thumbPath)
+    .on("error", () => {
+      // File terhapus antara existsSync dan read: jangan biarkan event error
+      // tanpa listener menjadi uncaughtException.
+      if (!res.headersSent) { res.writeHead(404); }
+      try { res.end(); } catch {}
+    })
+    .pipe(res);
 }
 
 // ===== Social Account Hub (PHASE 3) =========================================
@@ -7136,10 +7286,10 @@ async function handleOauthCallback(req, res, params) {
     const provider = socialManager.get(entry.provider);
     const account = await provider.exchangeCode(code, `http://${req.headers.host}/api/oauth/callback/${entry.provider}`);
     console.log(`[social] ${entry.provider} connected: ${account.accountName}`);
-    res.end(`<h3>✅ ${entry.provider} terhubung sebagai ${account.accountName}</h3><p>Kembali ke Clipper Studio.</p>`);
+    res.end(`<h3>✅ ${escapeHtml(entry.provider)} terhubung sebagai ${escapeHtml(account.accountName)}</h3><p>Kembali ke Clipper Studio.</p>`);
   } catch (err) {
     console.error("[social] callback error:", err.message);
-    res.end(`<h3>❌ Gagal menghubungkan ${entry.provider}.</h3><p>${String(err.message).replace(/</g, "&lt;")}</p>`);
+    res.end(`<h3>❌ Gagal menghubungkan ${escapeHtml(entry.provider)}.</h3><p>${escapeHtml(err.message)}</p>`);
   }
 }
 
@@ -7518,24 +7668,67 @@ router
 
 const server = http.createServer(async (req, res) => {
   try {
-    // â”€â”€ Same-origin guard â”€â”€
+    // --- Local-only guard ---
     // Server ini hanya untuk renderer lokal (Electron/dev browser). Tolak
     // permintaan dari origin lain (CSRF) pada request non-GET/HEAD yang punya
     // header Origin. Browser selalu mengirim Origin pada fetch lintas-origin.
-    const origin = req.headers.origin;
-    const isStateChanging = req.method !== "GET" && req.method !== "HEAD";
-    if (isStateChanging && origin) {
-      let allowed = false;
-      try {
-        const o = new URL(origin);
-        allowed = o.hostname === "127.0.0.1" || o.hostname === "localhost" || o.hostname === "::1";
-      } catch { allowed = false; }
-      if (!allowed) {
+    // ── Local-only guard ──
+    // Dua lapis, keduanya hanya berlaku saat server bind ke loopback:
+    //   1. Header Host harus milik server ini → memblokir DNS rebinding
+    //      (attacker.com yang resolve ke 127.0.0.1 tetap membawa Host: attacker.com).
+    //   2. Origin pada request non-GET harus persis origin server ini, bukan
+    //      sekadar "hostname localhost" → dev server lain di port berbeda tidak
+    //      bisa memicu export/hapus project.
+    const selfAddress = server.address();
+    const selfPort = selfAddress && typeof selfAddress === "object" ? selfAddress.port : PORT;
+    const boundAddress = String((selfAddress && selfAddress.address) || "");
+    const isLoopbackBind = boundAddress === "127.0.0.1" || boundAddress === "::1" || boundAddress === "::ffff:127.0.0.1";
+    if (isLoopbackBind) {
+      const selfHosts = new Set([`127.0.0.1:${selfPort}`, `localhost:${selfPort}`, `[::1]:${selfPort}`]);
+      const hostHeader = String(req.headers.host || "").toLowerCase();
+      if (hostHeader && !selfHosts.has(hostHeader)) {
         res.writeHead(403, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Origin tidak diizinkan." }));
+        res.end(JSON.stringify({ error: "Host tidak diizinkan." }));
+        return;
+      }
+      const origin = req.headers.origin;
+      const isStateChanging = req.method !== "GET" && req.method !== "HEAD";
+      if (isStateChanging && origin) {
+        const allowedOrigins = new Set([...selfHosts].map((h) => `http://${h}`));
+        if (!allowedOrigins.has(String(origin).toLowerCase())) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Origin tidak diizinkan." }));
+          return;
+        }
+      }
+    }
+    // ── Token API (mode LAN) ──
+    // Kosong pada mode loopback (default). Saat server dibuka ke jaringan,
+    // token dibuat otomatis supaya API tidak terbuka bebas.
+    if (apiToken) {
+      const tokenUrl = new URL(req.url, "http://localhost");
+      const supplied = String(req.headers["x-clipper-token"] || "") ||
+        readCookie(req.headers.cookie, "clipper_token") ||
+        String(tokenUrl.searchParams.get("token") || "");
+      const isApi = tokenUrl.pathname === "/api" || tokenUrl.pathname.startsWith("/api/");
+      // Callback OAuth datang dari browser platform (tanpa token) tapi dijaga
+      // oleh parameter state; jangan diblokir agar connect tetap bisa selesai.
+      const isOauthCallback = tokenUrl.pathname.startsWith("/api/oauth/callback/");
+      if (isApi && !isOauthCallback && supplied !== apiToken) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Token API diperlukan. Buka URL dengan ?token=... dari log server." }));
+        return;
+      }
+      if (!isApi && req.method === "GET" && supplied === apiToken) {
+        res.writeHead(302, {
+          "Set-Cookie": `clipper_token=${apiToken}; Path=/; HttpOnly; SameSite=Strict`,
+          Location: tokenUrl.pathname
+        });
+        res.end();
         return;
       }
     }
+
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Referrer-Policy", "no-referrer");
@@ -7550,12 +7743,45 @@ const server = http.createServer(async (req, res) => {
     }
   } catch (error) {
     console.error(error);
-    sendJson(res, 500, { error: error.message || "Server error" });
+    if (!res.headersSent) {
+      sendJson(res, 500, { error: error.message || "Server error" });
+    } else {
+      try { res.end(); } catch {}
+    }
   }
 });
 
+function reportToolchain() {
+  const items = [
+    { name: "ffmpeg", path: FFMPEG, hint: "wajib untuk preview & export" },
+    { name: "ffprobe", path: FFPROBE, hint: "wajib untuk metadata video" },
+    { name: "yt-dlp", path: YTDLP, hint: "wajib untuk URL YouTube" }
+  ];
+  const missing = [];
+  for (const item of items) {
+    const ok = fs.existsSync(item.path);
+    if (!ok) missing.push(item);
+    console.log(`[Tool] ${ok ? "OK  " : "MISS"} ${item.name}: ${item.path}${ok ? "" : ` (${item.hint})`}`);
+  }
+  if (missing.length) {
+    console.warn(`[Tool] ${missing.length} binary belum tersedia. Fitur terkait akan gagal dengan pesan jelas.`);
+    console.warn(`[Tool] Taruh di "${BIN_DIR}" atau set FFMPEG_PATH / FFPROBE_PATH / YTDLP_PATH / CLIPFORGE_BIN_DIR.`);
+  }
+}
+
 function startServer(port = PORT, host = "127.0.0.1") {
   cleanupOldData();
+  reportToolchain();
+  // Token hanya relevan saat bind non-loopback (mis. HOST=0.0.0.0 untuk LAN).
+  // Bisa juga dipaksa lewat CLIPFORGE_API_TOKEN.
+  const hostIsLoopback = host === "127.0.0.1" || host === "localhost" || host === "::1";
+  if (!hostIsLoopback) {
+    apiToken = String(process.env.CLIPFORGE_API_TOKEN || "") || crypto.randomBytes(24).toString("hex");
+    apiTokenIsLoopback = false;
+  } else {
+    apiToken = String(process.env.CLIPFORGE_API_TOKEN || "");
+    apiTokenIsLoopback = true;
+  }
   // Refresh hardware state (GPU/CUDA/NVENC) saat startup — dipakai runtime selector.
   refreshHardwareState().then(() => {
     const rt = hardwareState.runtime;
@@ -7576,7 +7802,11 @@ function startServer(port = PORT, host = "127.0.0.1") {
       const address = server.address();
       const actualPort = typeof address === "object" && address ? address.port : port;
       console.log(`Clipper Studio berjalan di http://${host}:${actualPort}`);
-      resolve({ server, port: actualPort, url: `http://${host}:${actualPort}`, shutdown: () => server.close() });
+      if (apiToken) {
+        console.log(`[Auth] Token API aktif${apiTokenIsLoopback ? "" : " (mode LAN)"}.`);
+        console.log(`[Auth] Buka: http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${actualPort}/?token=${apiToken}`);
+      }
+      resolve({ server, port: actualPort, url: `http://${host}:${actualPort}`, apiToken, shutdown: () => server.close() });
     });
   });
 }
@@ -7599,6 +7829,14 @@ module.exports = {
     wordsAlignWithSegmentText,
     flattenTranscriptWords,
     clipmeAssemble,
-    analyzeTranscriptToClips
+    analyzeTranscriptToClips,
+    // Dipakai test queue: memastikan slot tidak bocor saat worker hang.
+    createJob,
+    getActiveJobs: () => activeJobs,
+    getQueueLength: () => jobQueue.length,
+    // Dipakai test guard: Host/Origin/isSafePath/escapeHtml.
+    startServerForTest: startServer,
+    isSafePath,
+    escapeHtml
   }
 };
