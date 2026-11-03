@@ -45,7 +45,7 @@
     <p>The Application never reads or modifies data beyond what these scopes allow and only acts when you explicitly request an upload or publish action.</p>
 
     <h2>2. Local Storage — No Backend Servers</h2>
-    <p>OAuth access and refresh tokens are stored <strong>only on your device</strong>, in an encrypted-at-rest location under your user directory (<code>~/.clipper-studio/</code>) with restrictive file permissions. We do not operate any backend server that receives, stores, or processes your credentials, tokens, videos, or transcripts. Your video files are processed locally on your machine.</p>
+    <p>OAuth access and refresh tokens are stored <strong>only on your device</strong> under your user directory (<code>~/.clipper-studio/</code>). In the desktop app the file is encrypted at rest with the operating system keystore (Electron <code>safeStorage</code>: DPAPI on Windows, Keychain on macOS, libsecret on Linux). When the server is started from a terminal with <code>node server.js</code>, OS encryption is unavailable, so the file is stored as plain JSON with restrictive permissions (0600). We do not operate any backend server that receives, stores, or processes your credentials, tokens, videos, or transcripts. Your video files are processed locally on your machine.</p>
 
     <h2>3. How Your Information Is Used</h2>
     <ul>
@@ -56,7 +56,15 @@
     <p>We do <strong>not</strong>: sell your data, use it for advertising, build user profiles, or transfer it to any third party for unrelated purposes.</p>
 
     <h2>4. Sharing With Third Parties</h2>
-    <p>Your data is shared only with the platform you choose to publish to, strictly as needed to fulfill your requested action (for example, sending a video file to YouTube's upload API). No other sharing occurs.</p>
+    <p>Your data is shared only as needed to perform the action you request:</p>
+    <ul>
+      <li><strong>The platform you connect</strong> (YouTube, TikTok, Facebook Pages) — strictly to fulfil the action you initiate.</li>
+      <li><strong>OpenAI</strong> — only if you configure an OpenAI API key; the extracted audio of the clip (not the whole video) is sent to <code>api.openai.com</code> for transcription.</li>
+      <li><strong>YouTube / Google</strong> — the video URL is sent via <code>yt-dlp</code> to read metadata, subtitles, and stream sections.</li>
+      <li><strong>Hugging Face</strong> — model files (Whisper, optional pyannote) are downloaded the first time they are used.</li>
+      <li><strong>Argos Translate model host</strong> — only when you install offline translation models.</li>
+    </ul>
+    <p>No other sharing occurs.</p>
 
     <h2>5. Google API Services User Data Policy</h2>
     <div class="note">

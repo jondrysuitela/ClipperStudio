@@ -4,6 +4,20 @@ Daftar perbaikan dari **Deep Forensic Audit** (read-only). Setiap item = 1 PR/co
 
 **Konvensi status:** `[ ]` belum dikerjakan · `[~]` sedang dikerjakan · `[x]` selesai · `[!]` blocked/menunggu keputusan
 
+> **Status dokumen (diperbarui 2026-11-04):** checklist ini merekam keadaan 18 Agu 2026.
+> Audit ulang menemukan beberapa item `[x]` yang sudah tidak cocok dengan kode:
+> - **1.4** — hanya `HEAD /api/storage` (meter) yang ada; tidak ada `POST /api/cleanup`.
+> - **3.4** — model **tidak** ter-bundle di repo (`models/` hanya `MODELS-METADATA.json` dan di-gitignore); model diunduh saat pertama dipakai.
+> - **3.10** — daftar `player_client` sekarang `android_vr,ios,default,tv,web_embedded,tv_embedded,-android_sdkless`.
+> - **4.2 / 4.5** — env yang dibaca kode adalah `CLIPFORGE_ACCEL` (typo `CLIPFORCE_ACCEL` sudah diperbaiki di dokumen ini).
+> - **5.3** — tidak ada MediaPipe; rantai nyata YuNet → Haar → `skipped-no-backend`, tanpa auto-download saat analisis.
+> - Jumlah program `npm test` sekarang **34** (ditambah `queue-watchdog-test.js`, `export-e2e-test.js`, `security-guard-test.js`, `secure-store-test.js`, `api-token-test.js`).
+> - **Diperbaiki 2026-11-04:** `escDrawtext` tidak meng-escape `:` sehingga caption seperti "Kata kunci: ini" menggagalkan export (ditemukan lewat `export-e2e-test.js`). Kini `:` di-escape.
+> - **Diverifikasi ulang:** `bin/` (ffmpeg 9.0.2 + libass, ffprobe, yt-dlp), `.venv` (faster-whisper 1.2.1, ctranslate2 4.8.5, argostranslate 1.11.0, opencv 5.0.0), `npm run pack` sukses, app terpaket merespons `/api/system` dengan `ffmpeg=true`, `python=true`.
+> - Catatan dependensi: **av 19 mematahkan faster-whisper 1.2.1**; pin `av==18.1.0` ada di `requirements.txt`.
+> - **Installer terverifikasi (2026-11-04):** `npm run dist` sukses menghasilkan `dist/Clipper Studio Setup 0.2.0.exe` (422 MB dari 1,6 GB payload). App terpasang/portable merespons `/api/system` dengan `ffmpeg=true`, `pythonAvailable=true`, model di `resources/models/tiny`, dan `/api/stt/models` mengembalikan tiny/base/small.
+> - **Blocker packaging yang ditemukan & diperbaiki:** venv lama berisi *junction* ke instalasi Python AutoClaw (30 reparse point) → 7-Zip gagal (`The directory name is invalid`) dan runtime tidak portabel. Solusi: `.venv` dibangun dari **Python embeddable** (0 reparse point) + `sys.path` di `stt-engine.py`.
+
 ---
 
 ## PHASE 1 — MUST FIX (Critical/High, 1–7)
@@ -226,7 +240,7 @@ py_compile semua *.py di stt/ + stt-engine.py  (via .venv python) -> OK
 
 ### 4.2 Runtime selector — `G-02`
 - **Lokasi:** `clipme-hardware.js` (`resolveRuntime()`)
-- **Fitur:** Pilih device STT (cuda/cpu/auto) dan encoder video (h264_nvenc/libx264) berdasarkan hasil deteksi + env `CLIPFORCE_ACCEL` (auto/cpu/gpu).
+- **Fitur:** Pilih device STT (cuda/cpu/auto) dan encoder video (h264_nvenc/libx264) berdasarkan hasil deteksi + env `CLIPFORGE_ACCEL` (auto/cpu/gpu).
 - **Status:** [x]
 
 ### 4.3 STT device routing — `G-03`
@@ -243,7 +257,7 @@ py_compile semua *.py di stt/ + stt-engine.py  (via .venv python) -> OK
 
 ### 4.5 Electron GPU rendering — `G-05`
 - **Lokasi:** `electron/main.js`
-- **Perbaikan:** Tambah `ignore-gpu-blocklist`, `enable-gpu-rasterization`, `VaapiVideoDecoder` saat `CLIPFORCE_ACCEL !== "cpu"`.
+- **Perbaikan:** Tambah `ignore-gpu-blocklist`, `enable-gpu-rasterization`, `VaapiVideoDecoder` saat `CLIPFORGE_ACCEL !== "cpu"`.
 - **Status:** [x]
 
 ### 4.6 UI Local Engine panel — `G-06`

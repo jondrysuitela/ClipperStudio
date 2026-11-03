@@ -1,6 +1,14 @@
 # Social Account & Publishing Architecture — PHASE 1 AUDIT (blueprint)
 
-## STATE SAAT INI (terverifikasi)
+> **Status dokumen (diperbarui 2026-11-04):** bagian “STATE SAAT INI” di bawah sudah **historis**.
+> Phase 2–6 sudah diimplementasikan: `social/token-manager.js`, `social/credentials.js`,
+> `social/providers/{google,tiktok,meta}.js`, `social/manager.js`, route
+> `/api/social/connect|accounts|account|disconnect` dan `/api/oauth/callback/:provider`.
+> Yang **belum** ada: `social/publish-manager.js` dan implementasi upload/publish
+> (tombol publish sengaja masih disabled). Token disimpan plaintext 0600, bukan
+> `safeStorage` — lihat catatan enkripsi di dokumen ini.
+
+## STATE SAAT INI (per saat dokumen ditulis — sudah tidak berlaku)
 - Nol OAuth/token di kodebase. `/api/integrations` = deteksi env/`integrations.json` (8 kunci).
 - Integrations Hub UI ada: kartu platform, status deteksi nyata, REFRESH.
 - PUBLISH NOW terkunci permanen (cc4405a) — deteksi ≠ kapabilitas.

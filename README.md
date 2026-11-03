@@ -2,10 +2,34 @@
 
 Aplikasi lokal untuk mengubah URL YouTube menjadi short clips.
 
+## Prasyarat & Setup
+
+Kode Node tidak punya dependency npm untuk mode server, tetapi aplikasi butuh tiga hal di luar kode:
+
+1. **Node.js ≥ 18** — `node server.js` langsung jalan. Untuk mode desktop/packaging: `npm install` (electron + electron-builder).
+2. **Binary media** di folder `bin/` — atau lewat env `FFMPEG_PATH` / `FFPROBE_PATH` / `YTDLP_PATH` / `CLIPFORGE_BIN_DIR`:
+   - `ffmpeg.exe`, `ffprobe.exe` (build "full"): https://www.gyan.dev/ffmpeg/builds/
+   - `yt-dlp.exe`: https://github.com/yt-dlp/yt-dlp/releases
+
+   Binary yang sudah ada di `PATH` sistem ikut terdeteksi otomatis. Statusnya dicetak saat startup (`[Tool] OK/MISS ...`) dan tersedia di `GET /api/system` → `tools`.
+3. **Python venv di root repo** untuk STT lokal + terjemahan offline:
+
+   ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install --upgrade pip
+   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+   ```
+
+   `requirements.txt` memuat pin versi, termasuk **av==18.1.0** — av 19 mematahkan faster-whisper 1.2.1 (`metadata_errors` dihapus).
+   Venv di lokasi lain: set `CLIPFORGE_VENV_PYTHON=C:\path\ke\.venv\Scripts\python.exe`.
+4. **Model STT** tidak ikut di repo (`models/` hanya metadata). faster-whisper mengunduh model `tiny` sekali saat dipakai pertama kali (butuh internet), atau sediakan folder datar `models/<nama>/model.bin` — bila ada, model itu dipakai tanpa jaringan dan ikut dibawa saat `npm run dist`. Model wajah (YuNet) diunduh lewat tombol **Download Models**.
+5. **Verifikasi**: buka `http://localhost:4173/api/system` — `tools.ffmpeg.available`, `tools.ffprobe.available`, `tools.ytdlp.available`, dan `pythonAvailable` harus `true` sesuai fitur yang dipakai.
+
 ## Cara menjalankan
 
 ```powershell
-node server.js
+node server.js          # mode server + browser
+npm run desktop         # mode aplikasi Electron (butuh npm install)
 ```
 
 Lalu buka:
@@ -22,9 +46,9 @@ http://localhost:4173
 - Jika YouTube tidak menyediakan transcript, aplikasi bisa mencoba speech-to-text dari audio clip.
 - OpenAI STT aktif otomatis jika `OPENAI_API_KEY` tersedia.
 - Local Whisper aktif otomatis jika `.venv` berisi `faster-whisper`.
-- Buat kandidat clip dari transcript, durasi, dan heatmap retention.
+- Buat kandidat clip dari transcript, durasi, dan pacing/silence (skor retensi dihitung heuristik dari transcript + sinyal audio; heatmap retention belum tersedia).
 - Auto caption dari teks transcript di rentang clip.
-- Viral score sederhana berbasis kata kunci, pertanyaan, kepadatan ucapan, dan heatmap.
+- Viral score sederhana berbasis kata kunci, pertanyaan, kepadatan ucapan, dan pacing.
 - **ClipMe Intelligence Engine**: analisis clip multi-kriteria (hook strength, retention, value, story completeness, context independence, emotional impact, shareability, comment, quotability, rewatch) dengan score 0-100 + hard caps, 16 hook types, original vs recommended source hook (reorder aman), 3 caption variants, CTA, discussion question, hashtags, source evidence, dan quality gate. Tampil di tab **Intel** pada inspector.
 - **Mode LLM**: jika `OPENAI_API_KEY` tersedia, analisis Intel diproses model AI dengan system prompt `clipme-prompt.js`. Tanpa API key, otomatis fallback ke engine heuristic lokal.
 - Preview clip langsung di aplikasi dengan cached YouTube section resolusi ringan.
@@ -38,7 +62,7 @@ http://localhost:4173
 - Export bisa memakai section preview yang sudah dicache agar lebih cepat.
 - STT tidak lagi dijalankan untuk seluruh video di awal.
 - Analyze URL default memakai metadata ringan agar jauh lebih cepat.
-- Default terbaru memakai fast mode: paste URL langsung generate clip tanpa menunggu `yt-dlp`.
+- Default terbaru memakai fast mode: paste URL langsung membuat kandidat clip. Durasi tetap diambil lewat `yt-dlp --skip-download` (timeout 5 menit); kalau gagal, dipakai durasi asumsi agar alur tidak berhenti.
 - Jika caption belum tersedia, STT berjalan on-demand hanya untuk clip yang dipreview/export.
 - Queue membatasi pekerjaan berat agar tidak saling menabrak.
 - **Timeline caption editor**: blok caption bisa digeser (drag) dan di-resize dari kiri/kanan, zoom dengan Ctrl+scroll, geser timeline dengan scroll, klik area kosong untuk seek, Space untuk play/pause.
@@ -112,12 +136,12 @@ Gunakan hanya video yang memang boleh kamu download/proses. Jika video tidak pun
 
 ## GPU / CPU Acceleration
 
-Fitur opsional LocalAI untuk speaker cut / cut-to-face otomatis. Active by default — List dibuat dengan bantuan `clipme-localai.js` + `clipme-speaker-detect.py` + `clipme-face-detect.py`.
+Fitur opsional LocalAI untuk speaker cut / cut-to-face otomatis. **Nonaktif secara default** — aktifkan lewat toggle *Speaker Cut* / *Face tracking* di Inspector → Settings setelah model & Python tersedia. Pipeline memakai `clipme-localai.js` + `clipme-speaker-detect.py` + `clipme-face-detect.py`.
 
 Cara kerjanya:
 
 1. Deteksi speaker berbasis energy + spectral clustering (NO ground-truth). Speaker timeline dianalisis dari audio dengan ffmpeg silencedetect + astats sebagai fallback universal — tanpa dependency wajib untuk dijalankan.
-2. Face detection lokal optional (no model download). Bilamana `opencv-python` / `mediapipe` terpasang, [NN model](https://opencv.org/) (YuNet, ~340KB) auto-download selesai di `./models/face/`.
+2. Face detection lokal optional. YuNet (~340KB, lisensi MIT) **tidak** diunduh otomatis saat analisis — ambil lewat tombol **Download Models** (`POST /api/localai/download-model`), lalu disimpan di `models/face/`. Rantai backend: YuNet → Haar cascade profile → `skipped-no-backend`.
 3. Speaker↔face association tanpa persistent tracking: pilih frame di interval speaker yang paling mungkin berisi wajah, lalu crop weighted face ke tengah scene. Untuk satu-speaker aktif, hasil stabil.
 4. Setelah **Analyze Speaker Cut**, preview menerapkan crop secara real-time lewat CSS pan/zoom (tanpa render ulang FFmpeg). Timeline yang sama dipakai oleh filter crop dinamis saat export agar perpindahan wajah konsisten.
 
@@ -135,7 +159,7 @@ $env:CLIPFORGE_ACCEL="gpu"    # coba pakai GPU kalau tersedia
 
 - **clipme-localai.js**: Node provider abstraction dengan 2 backend tier (energy + real pyannote).
 - **clipme-speaker-detect.py**: Python analyzer speaker diarization. 3-level fallback: `pyannote.audio` (jauh terbaik), `numpy spectral clustering`, ffmpeg silencedetect (selalu).
-- **clipme-face-detect.py**: Python analyzer face detection. 3-level fallback: `MediaPipe`, `OpenCV DNN (YuNet)` + auto-download model ringan, atau graceful-skip kalau keduanya nggak ada.
+- **clipme-face-detect.py**: Python analyzer face detection. Fallback nyata: `OpenCV DNN (YuNet)` → `Haar cascade profile` → graceful-skip (`skipped-no-backend`) kalau OpenCV tidak ada. Tidak memakai MediaPipe.
 
 UI Panel "AI Engine" di Inspector > Settings tab expose:
 
@@ -151,7 +175,7 @@ Endpoints ada di server.js:
 
 Cache: `analyzeForSpeakerCut()` caching by sha256(audioPath) + sha256(videoPath). Re-run di clip yang sama nggak re-run pipeline.
 
-## GPU / CPU Acceleration
+## Akselerasi GPU / CPU (runtime)
 
 Clipper Studio secara otomatis mendeteksi hardware dan memilih runtime terbaik:
 
@@ -199,12 +223,10 @@ Untuk install venv dengan CUDA:
 
 ## Speech-to-text
 
-## Speech-to-text
-
 OpenAI:
 
 ```powershell
-$env:OPENAI_API_KEY="sk-..."
+$env:OPENAI_API_KEY=sk-xxxxxxxx
 node server.js
 ```
 
@@ -225,7 +247,7 @@ node server.js
 Local faster-whisper (buat venv di folder proyek ini):
 
 ```powershell
-cd "D:\PROJEK CODING\clipme"
+cd "D:\PROJEK CODING\Clipper_Studio\ClipperStudio"
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install faster-whisper
@@ -252,7 +274,7 @@ Model terjemahan lain bisa di-pre-download sebelum dipakai:
 .\.venv\Scripts\python.exe stt-engine.py translate --text "Halo" --from id --to en
 ```
 
-Model default local STT adalah `tiny` di CPU dengan `int8` (tercepat). Model `small` juga ter-bundle. Bisa diganti:
+Model default local STT adalah `tiny` di CPU dengan `int8` (tercepat). Model `small` **tidak** ikut ter-bundle di repo — unduh sekali lewat faster-whisper atau taruh di `models/small/`. Bisa diganti:
 
 ```powershell
 $env:LOCAL_WHISPER_MODEL="base"
@@ -282,6 +304,43 @@ Jumlah job berat paralel default adalah 2. Bisa diubah:
 $env:CLIPFORGE_MAX_JOBS="1"
 node server.js
 ```
+
+## Build installer
+
+```powershell
+npm install          # electron + electron-builder
+npm run pack         # dist/win-unpacked (tanpa installer)
+npm run dist         # dist/Clipper Studio Setup <versi>.exe
+```
+
+Yang ikut dibundel lewat `extraResources`: `bin/` (ffmpeg, ffprobe, yt-dlp), `.venv/` (runtime Python + faster-whisper + Argos + OpenCV), dan `models/`.
+
+Penting untuk `.venv`:
+
+- Venv harus **portable**. Venv yang dibuat dari Python “shared” bisa berisi junction ke instalasi Python lain — paket jadi rusak di mesin user dan `npm run dist` gagal di tahap 7-Zip (`WARNING: The directory name is invalid`).
+- Repo ini memakai **Python embeddable** (python-3.13.x-embed-amd64) di `.venv\Scripts`, dengan `python313._pth` berisi `python313.zip`, `.`, `..\Lib\site-packages`, `import site`.
+- Verifikasi cepat: `Get-ChildItem .venv -Recurse | Where-Object LinkType` harus kosong.
+- `stt-engine.py` menambahkan folder dirinya ke `sys.path` supaya `import stt` tetap jalan di mode isolated Python embeddable.
+
+## Pengujian
+
+```powershell
+npm test
+```
+
+34 program dijalankan berurutan (berhenti di kegagalan pertama). Catatan:
+
+- Suite yang butuh `bin/ffmpeg.exe` (upload/export/preview E2E) akan **SKIP** dengan pesan jelas bila binary tidak ada — tidak menggagalkan rantai.
+- Semua suite memakai data dir sementara (`CLIPFORGE_DATA_DIR`), jadi `npm test` tidak menyentuh project/export nyata.
+- `node --check` menyapu seluruh file `.js`; `python -m py_compile` untuk file Python.
+
+## Keamanan lokal (penting)
+
+Server ini dirancang hanya untuk mesin sendiri:
+
+- Default bind `127.0.0.1`. Selama bind loopback, setiap request wajib membawa header `Host` milik server itu sendiri (memblokir DNS rebinding) dan `Origin` yang persis sama untuk request non-GET.
+- `HOST=0.0.0.0` membuka API ke jaringan, jadi server **otomatis membuat token** dan mencetak URL ber-token di log (`http://<ip>:4173/?token=...`). Navigasi pertama memasang cookie `clipper_token` (HttpOnly, SameSite=Strict); tanpa token, seluruh `/api/*` menjawab `401`. Token bisa dipatok lewat `CLIPFORGE_API_TOKEN`.
+- Token OAuth & client secret disimpan di `~/.clipper-studio/` (di luar repo). Di aplikasi desktop file dienkripsi `safeStorage` (DPAPI/Keychain/libsecret); lewat `node server.js` enkripsi tidak tersedia sehingga file ditulis plaintext dengan permission 0600 (di Windows `chmod` tidak berefek). Statusnya ada di `GET /api/system` → `credentials.socialTokens`.
 
 ## Mengatasi blokir YouTube (HTTP 429 / "Sign in to confirm you're not a bot")
 
