@@ -66,6 +66,9 @@ class LocalProvider extends AIProvider {
 
     return {
       ok: true,
+      // Task ini tidak punya implementasi heuristik: tandai stub supaya
+      // orchestrator tidak menghitungnya sebagai analisis nyata (confidence).
+      stub: true,
       data: { result: "local-heuristic", note: "Task belum didukung provider lokal, fallback deterministik." },
       provider: "local",
       model: "clipme-heuristic",

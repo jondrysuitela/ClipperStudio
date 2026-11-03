@@ -113,41 +113,52 @@ def adaptive_sample_fps(video_fps, requested_fps=DEFAULT_SAMPLE_FPS):
     return max(1, min(MAX_SAMPLE_FPS, requested_fps, int(video_fps)))
 
 
-def sample_frames(video_path, sample_fps, start_seconds=0, duration_seconds=0):
-    """Extract frames from video at adaptive sample rate."""
+def iter_frames(video_path, sample_fps, start_seconds=0, duration_seconds=0):
+    """Yield (t_ms, frame) satu per satu.
+
+    Penting: jangan menumpuk frame di list. Video 10 menit @3fps 1080p ≈ 1.800
+    frame BGR (~6 MB/frame) ≈ 10 GB RAM kalau disimpan sekaligus.
+    """
     try:
         import cv2
     except Exception:
-        return []
+        return
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        return []
-    video_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-    total_frames = max(0, int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0))
-    effective_fps = adaptive_sample_fps(video_fps, sample_fps)
-    start_frame = max(0, int(round(max(0.0, start_seconds) * video_fps)))
-    end_frame = total_frames
-    if duration_seconds and duration_seconds > 0:
-        end_frame = min(
-            total_frames or (start_frame + int(duration_seconds * video_fps)),
-            start_frame + max(1, int(round(duration_seconds * video_fps)))
-        )
-    if start_frame:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-    step_frames = max(1, int(round(video_fps / max(1, effective_fps))))
-    frames = []
-    idx = start_frame
-    while end_frame <= 0 or idx < end_frame:
-        ok = cap.grab()
-        if not ok:
-            break
-        if (idx - start_frame) % step_frames == 0:
-            ok, frame = cap.retrieve()
-            if ok:
-                t_ms = int(((idx - start_frame) / video_fps) * 1000) if video_fps > 0 else 0
-                frames.append((t_ms, frame))
-        idx += 1
-    cap.release()
+        return
+    try:
+        video_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        total_frames = max(0, int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0))
+        effective_fps = adaptive_sample_fps(video_fps, sample_fps)
+        start_frame = max(0, int(round(max(0.0, start_seconds) * video_fps)))
+        end_frame = total_frames
+        if duration_seconds and duration_seconds > 0:
+            end_frame = min(
+                total_frames or (start_frame + int(duration_seconds * video_fps)),
+                start_frame + max(1, int(round(duration_seconds * video_fps)))
+            )
+        if start_frame:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+        step_frames = max(1, int(round(video_fps / max(1, effective_fps))))
+        idx = start_frame
+        while end_frame <= 0 or idx < end_frame:
+            ok = cap.grab()
+            if not ok:
+                break
+            if (idx - start_frame) % step_frames == 0:
+                ok, frame = cap.retrieve()
+                if ok:
+                    t_ms = int(((idx - start_frame) / video_fps) * 1000) if video_fps > 0 else 0
+                    yield (t_ms, frame)
+            idx += 1
+    finally:
+        # Dilepas juga saat generator dihentikan di tengah jalan (cancel/error).
+        cap.release()
+
+
+def sample_frames(video_path, sample_fps, start_seconds=0, duration_seconds=0):
+    """Versi list dari iter_frames — hanya untuk klip pendek/uji."""
+    return list(iter_frames(video_path, sample_fps, start_seconds, duration_seconds))
     return frames
 
 
@@ -400,16 +411,13 @@ def analyze_video(video_path, models_root, sample_fps, start_seconds=0, duration
         return {"schema_version": SCHEMA_VERSION, "source": "skipped-no-backend",
                 "fps": sample_fps, "frames": [], "skipped": True}
 
-    frames = sample_frames(video_path, sample_fps, start_seconds, duration_seconds)
-    if not frames:
-        return {"schema_version": SCHEMA_VERSION, "source": "skipped-no-backend",
-                "fps": sample_fps, "frames": [], "skipped": True}
-
     tracker = Tracker()
     prev_gray = None
     out_frames = []
+    processed = 0
 
-    for idx, (t_ms, frame) in enumerate(frames):
+    for idx, (t_ms, frame) in enumerate(iter_frames(video_path, sample_fps, start_seconds, duration_seconds)):
+        processed += 1
         if frame is None:
             continue
         yf = detect_yunet(yunet, frame)
@@ -450,6 +458,10 @@ def analyze_video(video_path, models_root, sample_fps, start_seconds=0, duration
             })
         out_frames.append({"t_ms": t_ms, "faces": faces_out})
         prev_gray = cur_gray
+
+    if not processed:
+        return {"schema_version": SCHEMA_VERSION, "source": "skipped-no-backend",
+                "fps": sample_fps, "frames": [], "skipped": True}
 
     return {
         "schema_version": SCHEMA_VERSION,

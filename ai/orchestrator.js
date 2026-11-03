@@ -189,7 +189,7 @@ async function runTask(task, opts = {}) {
   const userText = typeof opts.user === "string" ? opts.user : JSON.stringify(opts.user || {});
   const lang = opts.language || "id";
   const sourcesHash = hashInput(userText);
-  const modelHash = providers.map((p) => `${p.id}:${p.model || ""}`).join("|");
+  const modelHash = providers.map((p) => `${p.id}:${p.defaultModel || p.model || ""}`).join("|");
   const version = taskPromptVersion(task);
   const cacheKey = `${task}|${sourcesHash}|${modelHash}|${version}|${strategy}`;
 
@@ -212,7 +212,7 @@ async function runTask(task, opts = {}) {
         if (r && r.ok && r.data) {
           manager.recordUsage(p.id, r.usage);
           if (typeof opts.onProgress === "function") opts.onProgress(idx + 1, providers.length, p.id, "done");
-          return { provider: p.id, model: r.model, data: r.data, weight: p.weight, ok: true };
+          return { provider: p.id, model: r.model, data: r.data, weight: p.weight, ok: true, stub: !!r.stub };
         }
         manager.recordUsage(p.id, null);
         if (typeof opts.onProgress === "function") opts.onProgress(idx + 1, providers.length, p.id, "failed");
@@ -244,7 +244,7 @@ async function runTask(task, opts = {}) {
         options: { ...(opts.options || {}), language: lang }
       }).catch(() => ({ ok: false }));
       if (r && r.ok) {
-        successful.push({ provider: "local", model: "clipme-heuristic", data: r.data, weight: 1, ok: true });
+        successful.push({ provider: "local", model: "clipme-heuristic", data: r.data, weight: 1, ok: true, stub: !!r.stub });
         fallback = true;
       }
     }
@@ -273,11 +273,16 @@ async function runTask(task, opts = {}) {
   }).filter((v) => v.value != null);
   const labelConsensus = labelVotes.length ? aggregateLabel(labelVotes) : null;
 
-  // Confidence keseluruhan: proporsi penyedia sukses + tingkat kesepakatan skor.
-  const providerConf = successful.length / Math.max(1, providers.length);
+  // Confidence keseluruhan: proporsi penyedia yang benar-benar menganalisis +
+  // tingkat kesepakatan skor. Provider berstatus stub (fallback deterministik
+  // tanpa analisis) tidak boleh menaikkan confidence.
+  const realSuccess = successful.filter((r) => !r.stub);
+  const providerConf = realSuccess.length / Math.max(1, providers.length);
   let agreement = 1;
   if (consensusScore != null && scores.length > 1) agreement = 1 - consensusSpread(scores);
-  const confidence = Math.min(1, Math.max(0, Math.round((0.6 * providerConf + 0.4 * agreement) * 100) / 100));
+  const confidence = realSuccess.length
+    ? Math.min(1, Math.max(0, Math.round((0.6 * providerConf + 0.4 * agreement) * 100) / 100))
+    : 0;
 
   const result = {
     ok: true,
@@ -295,7 +300,7 @@ async function runTask(task, opts = {}) {
     },
     fallback,
     cacheHit: false,
-    sourceFidelity: opts.creative ? "MEDIUM" : "HIGH",
+    sourceFidelity: realSuccess.length ? (opts.creative ? "MEDIUM" : "HIGH") : "STUB",
     promptVersion: version,
     raw: successful.map((r) => ({ provider: r.provider, data: r.data })),
     failedProviders: failures.map((f) => f.provider)

@@ -7,6 +7,9 @@ Orchestrates ModelManager + AudioProcessor for production-grade transcription.
 import os
 import sys
 import time
+import atexit
+import shutil
+import tempfile
 import asyncio
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -33,6 +36,21 @@ from .errors import (
     TaskCancelledError,
 )
 from .logging import log
+
+
+# Folder temp milik proses ini (hasil pra-proses audio). Dibersihkan saat proses
+# berakhir — server menjalankan satu proses Python per transkripsi, jadi tidak
+# ada sisa file yang menumpuk di folder audio user.
+_TEMP_DIRS: List[str] = []
+
+
+def _cleanup_temp_dirs() -> None:
+    while _TEMP_DIRS:
+        path = _TEMP_DIRS.pop()
+        shutil.rmtree(path, ignore_errors=True)
+
+
+atexit.register(_cleanup_temp_dirs)
 
 
 class STTEngine(ISTTEngine):
@@ -329,7 +347,12 @@ class STTEngine(ISTTEngine):
             import soundfile as sf
             audio, sr = self._audio_proc.load(audio_path)
             audio = self._audio_proc.process(audio, sr, do_nr, do_sr, do_enh)
-            proc_path = audio_path + ".proc.wav"
+            # Simpan di folder temp sendiri (bukan di sebelah file sumber):
+            # menulis ke folder sumber bisa gagal saat read-only, dan file
+            # `.proc.wav` lama menumpuk tanpa pernah dihapus.
+            proc_dir = tempfile.mkdtemp(prefix="clipper-stt-")
+            _TEMP_DIRS.append(proc_dir)
+            proc_path = os.path.join(proc_dir, "proc.wav")
             sf.write(proc_path, audio, sr)
             log.info(f"Pre-processed audio saved to {proc_path}")
             return proc_path

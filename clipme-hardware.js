@@ -185,9 +185,10 @@ function detectCudaViaPython(venvPython) {
         result.deviceCount = data.device_count || 0;
         result.fallback = !!data.fallback;
       } catch {
-        if (out.includes("true") || out.includes("1")) {
-          result.available = true;
-        }
+        // Output bukan JSON valid: jangan menebak dari substring ("true"/"1"
+        // bisa muncul di pesan error). Tandai tidak diketahui; pemanggil
+        // memakai fallback CPU yang aman.
+        result.unknown = true;
       }
     }
   } catch {

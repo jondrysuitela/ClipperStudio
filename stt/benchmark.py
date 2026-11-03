@@ -52,6 +52,10 @@ class Benchmark:
         cfg = config or {"model": {"name": model_name, "device": "auto", "compute_type": "auto"}}
 
         # Generate dummy audio if no path
+        # Hanya file yang KITA buat sendiri yang boleh dihapus. Sebelumnya
+        # penghapusan memakai pencocokan substring `"tmp" in audio_path`, yang
+        # bisa menghapus audio user (mis. C:/tmp/klip.wav).
+        created_tmp_audio = False
         if not audio_path or not os.path.exists(audio_path):
             log.info(f"Generating {duration}s dummy audio for benchmark")
             sr = 16000
@@ -61,6 +65,7 @@ class Benchmark:
             tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
             sf.write(tmp.name, audio, sr)
             audio_path = tmp.name
+            created_tmp_audio = True
             result.audio_duration = duration
         else:
             import soundfile as sf
@@ -111,8 +116,8 @@ class Benchmark:
             log.error(f"Benchmark failed: {e}")
 
         finally:
-            # Cleanup temp file
-            if audio_path and "tmp" in audio_path:
+            # Cleanup hanya file dummy yang dibuat fungsi ini.
+            if created_tmp_audio and audio_path:
                 try:
                     os.unlink(audio_path)
                 except Exception:

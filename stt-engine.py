@@ -20,6 +20,13 @@ import os
 import sys
 import time
 
+# Python embeddable (runtime yang dibundel aplikasi) memakai `._pth` dalam mode
+# isolated, sehingga folder skrip ini TIDAK otomatis masuk sys.path. Tanpa baris
+# ini `import stt` gagal saat dijalankan dari paket.
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIR)
+
 from stt.config import STTConfig, DEFAULT_CONFIG
 from stt.model import ModelManager
 from stt.audio import AudioProcessor
@@ -204,15 +211,15 @@ def main():
                     result["capability"] = f"{cap[0]}.{cap[1]}"
             except Exception as e:
                 result["devices"].append({"index": i, "name": f"GPU {i}", "capability": "?", "error": str(e)})
-        print(json.dumps(result, indent=2) if getattr(args, "json", False) else f"CUDA ✓  ({count} device(s))")
-
+        # Satu kali print saja: pemanggil (clipme-hardware.js) melakukan
+        # JSON.parse atas stdout. Print ganda membuat parse gagal dan deteksi
+        # GPU jatuh ke tebakan substring.
         if getattr(args, "json", False):
             print(json.dumps(result, indent=2))
+        elif result["available"]:
+            print(f"CUDA ✓  ({result['device_count']} device(s): {', '.join(d['name'] for d in result['devices'])})")
         else:
-            if result["available"]:
-                print(f"CUDA ✓  ({result['device_count']} device(s): {', '.join(d['name'] for d in result['devices'])})")
-            else:
-                print("CUDA ✕  (not available in this Python runtime)")
+            print("CUDA ✕  (not available in this Python runtime)")
         return
 
     # ── Load config ──

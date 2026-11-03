@@ -131,7 +131,11 @@ function runPython(pythonPath, scriptPath, args, timeoutMs = 600000) {
     if (!fs.existsSync(scriptPath)) return reject(new Error(`script not found: ${scriptPath}`));
     let stdout = "";
     let stderr = "";
-    const child = execFile(pythonPath, [scriptPath, ...args], { windowsHide: true });
+    const child = execFile(pythonPath, [scriptPath, ...args], {
+    windowsHide: true,
+    // Venv bundel harus mandiri: jangan warisi PYTHONHOME / site-packages global.
+    env: (() => { const e = { ...process.env, PYTHONNOUSERSITE: "1", PYTHONIOENCODING: "utf-8" }; delete e.PYTHONHOME; return e; })()
+  });
     const timer = setTimeout(() => { try { child.kill(); } catch {} reject(new Error(`python timed out after ${timeoutMs}ms`)); }, timeoutMs);
     child.stdout.on("data", (c) => { stdout += c.toString(); });
     child.stderr.on("data", (c) => { stderr += c.toString(); });
