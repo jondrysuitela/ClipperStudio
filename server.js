@@ -1036,20 +1036,26 @@ function killProcess(child) {
 }
 
 // Env untuk semua subprocess (ffmpeg/yt-dlp/python).
-// - TMP diarahkan ke folder app supaya file sementara tidak menumpuk di %TEMP% user.
-// - PYTHONNOUSERSITE/PYTHONHOME: venv yang dibundel harus mandiri; jangan sampai
-//   Python memuat site-packages global mesin user atau menunjuk instalasi lain.
+// TMP diarahkan ke folder app supaya file sementara tidak menumpuk di %TEMP% user.
 function childEnv(extra = {}) {
-  const env = {
+  return {
     ...process.env,
     TMP: TMP_DIR,
     TEMP: TMP_DIR,
     TMPDIR: TMP_DIR,
     FONTCONFIG_PATH: TMP_DIR,
-    PYTHONNOUSERSITE: "1",
-    PYTHONIOENCODING: "utf-8",
     ...extra
   };
+}
+
+// Isolasi hanya untuk interpreter Python milik app. Jangan diterapkan ke semua
+// subprocess: alat pihak ketiga (mis. yt-dlp dari pip) bisa berupa shim yang
+// bergantung pada site-packages user, dan akan gagal dengan PYTHONNOUSERSITE.
+function applyPythonIsolation(env, command) {
+  const base = path.basename(String(command || "")).toLowerCase();
+  if (base !== "python.exe" && base !== "pythonw.exe") return env;
+  env.PYTHONNOUSERSITE = "1";
+  env.PYTHONIOENCODING = "utf-8";
   delete env.PYTHONHOME;
   return env;
 }
@@ -1058,7 +1064,7 @@ function run(command, args, timeoutMs = 300000, childSink = null, onProgress = n
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       windowsHide: true,
-      env: childEnv()
+      env: applyPythonIsolation(childEnv(), command)
     });
     activeChildren.add(child);
     if (childSink) childSink.add(child);
@@ -2460,6 +2466,45 @@ async function fetchYouTubeTranscript(videoUrl, preferredLanguage) {
     }
   }
   return { segments: [], lang: "" };
+}
+
+// Project "fast mode" tidak punya transcript sampai ada yang memintanya. Ambil
+// subtitle YouTube saat dibutuhkan (sekali saja) supaya tombol Generate tidak
+// berhenti di pesan buntu; kalau video benar-benar tanpa subtitle, pemanggil
+// tetap menampilkan panduan upload/STT.
+async function ensureProjectTranscript(projectDir, manifest) {
+  if (!manifest || manifest.transcriptPath) return manifest;
+  if (manifest.type !== "youtube" || !manifest.url) return manifest;
+  const transcriptFile = path.join(projectDir, "transcript.json");
+  if (fs.existsSync(transcriptFile)) {
+    const updated = {
+      ...manifest,
+      transcriptPath: "transcript.json",
+      transcriptProvider: manifest.transcriptProvider && manifest.transcriptProvider !== "fast-mode"
+        ? manifest.transcriptProvider
+        : "cached-transcript"
+    };
+    writeProjectManifest(projectDir, updated);
+    return updated;
+  }
+  try {
+    const fetched = await fetchYouTubeTranscript(manifest.url, manifest.transcriptLanguage || "Indonesia");
+    if (!fetched.segments.length) return manifest;
+    // Format file: array segmen (sama dengan yang ditulis analyzeLocalUpload).
+    fs.writeFileSync(transcriptFile, JSON.stringify(fetched.segments));
+    const updated = {
+      ...manifest,
+      transcriptPath: "transcript.json",
+      transcriptProvider: "youtube-captions",
+      transcriptLanguage: fetched.lang || manifest.transcriptLanguage || "Indonesia"
+    };
+    writeProjectManifest(projectDir, updated);
+    console.log(`[Transcript] ${manifest.id}: ${fetched.segments.length} segmen dari subtitle YouTube`);
+    return updated;
+  } catch (error) {
+    console.warn(`[Transcript] gagal mengambil subtitle: ${error.message}`);
+    return manifest;
+  }
 }
 
 function clipCaption(segments) {
@@ -5818,12 +5863,14 @@ function handleUpdateProject(req, res, params) {
   }).catch(() => sendJson(res, 400, { error: "Invalid JSON" }));
 }
 
-function handleGenerateClips(req, res, params) {
+async function handleGenerateClips(req, res, params) {
   const projectId = params.projectId || "";
   if (!isValidUUID(projectId)) { sendJson(res, 400, { error: "Invalid project ID" }); return; }
   const projectDir = path.join(UPLOAD_DIR, projectId);
   if (!fs.existsSync(projectDir)) { sendJson(res, 404, { error: "Project not found" }); return; }
-  const manifest = readProjectManifest(projectDir);
+  let manifest = readProjectManifest(projectDir);
+  // Fast-mode YouTube project: coba ambil subtitle dulu sebelum menyerah.
+  manifest = await ensureProjectTranscript(projectDir, manifest);
   if (!manifest.transcriptPath) {
     sendJson(res, 400, { error: "Project belum punya transcript. Paste URL YouTube dengan subtitle, atau upload video dengan STT." });
     return;
@@ -5995,7 +6042,11 @@ function findClipSentences(manifest, clip) {
     const transcriptPath = path.join(path.join(UPLOAD_DIR, manifest.id), manifest.transcriptPath || "transcript.json");
     if (!fs.existsSync(transcriptPath)) return [];
     const transcript = JSON.parse(fs.readFileSync(transcriptPath, "utf8"));
-    const segs = Array.isArray(transcript.segments) ? transcript.segments : [];
+    // transcript.json disimpan sebagai array segmen; beberapa jalur lama menulis
+    // objek { segments }. Terima keduanya.
+    const segs = Array.isArray(transcript)
+      ? transcript
+      : (Array.isArray(transcript && transcript.segments) ? transcript.segments : []);
     return segs
       .filter((s) => Number(s.end) > Number(clip.start) - 0.01 && Number(s.start) < Number(clip.end) + 0.01)
       .map((s) => ({ text: s.text, start: s.start, end: s.end }));
@@ -7836,6 +7887,7 @@ module.exports = {
     getQueueLength: () => jobQueue.length,
     // Dipakai test guard: Host/Origin/isSafePath/escapeHtml.
     startServerForTest: startServer,
+    applyPythonIsolation,
     isSafePath,
     escapeHtml
   }

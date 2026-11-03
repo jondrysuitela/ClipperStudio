@@ -9,7 +9,10 @@ Kode Node tidak punya dependency npm untuk mode server, tetapi aplikasi butuh ti
 1. **Node.js ≥ 18** — `node server.js` langsung jalan. Untuk mode desktop/packaging: `npm install` (electron + electron-builder).
 2. **Binary media** di folder `bin/` — atau lewat env `FFMPEG_PATH` / `FFPROBE_PATH` / `YTDLP_PATH` / `CLIPFORGE_BIN_DIR`:
    - `ffmpeg.exe`, `ffprobe.exe` (build "full"): https://www.gyan.dev/ffmpeg/builds/
-   - `yt-dlp.exe`: https://github.com/yt-dlp/yt-dlp/releases
+   - `yt-dlp.exe` **standalone**: https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe (±22 MB).
+     Jangan pakai `pip install yt-dlp` lalu menyalin `Scripts\yt-dlp.exe` (±116 KB): itu *shim* yang
+     bergantung pada site-packages Python mesin ini, sehingga gagal (`No module named yt_dlp`)
+     begitu aplikasi menjalankannya dengan environment sendiri.
 
    Binary yang sudah ada di `PATH` sistem ikut terdeteksi otomatis. Statusnya dicetak saat startup (`[Tool] OK/MISS ...`) dan tersedia di `GET /api/system` → `tools`.
 3. **Python venv di root repo** untuk STT lokal + terjemahan offline:
