@@ -446,7 +446,11 @@ function scoreHook(sentence, lang, context) {
 
   score = Math.max(0, Math.min(100, Math.round(score)));
 
-  const band = score >= 75 ? "strong" : score >= 55 ? "medium" : "weak";
+  // Ambang band dikalibrasi dari transkrip nyata: kalimat YouTube pendek &
+  // tanpa kapital biasanya berada di 20-35, sehingga ambang 75/55 membuat
+  // semuanya "weak". 45/30 memisahkan kandidat teratas (~p95 lokal) dari
+  // kalimat biasa tanpa mengubah skor absolut.
+  const band = score >= 45 ? "strong" : score >= 30 ? "medium" : "weak";
   const evidence = { specificity, density, curiosity, tension, novelty, contrarian: contrarian ? 1 : 0, stakes: stakes ? 1 : 0, secondPerson: secondPerson ? 1 : 0, anchor: concreteAnchor ? 1 : 0, clarity: Math.min(8, wc >= 4 && wc <= 16 ? 6 : wc <= 22 ? 3 : 0) + (/[.!?…]$/.test(text) ? 2 : 0), context: contextInd, value, authenticity };
   const deepResult = dimensionScores(text, lang, context, evidence, penalties);
 
