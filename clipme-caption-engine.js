@@ -145,6 +145,101 @@ function layoutCaptionLines(words, maxLines, maxLineLength) {
 }
 
 // Auto Caption Engine Core
+// ── Penjaga kualitas caption ────────────────────────────────────────────────
+// Word-level STT sering menghasilkan segmen terlalu panjang (teks melebihi
+// layar) atau terlalu pendek (0.2 s, tidak terbaca). Fungsi ini menormalkan
+// keluaran kedua jalur (heuristic & LLM) tanpa mengubah teks:
+//   - pecah segmen panjang di batas kata (durasi / jumlah kata / karakter)
+//   - gabung segmen terlalu pendek yang berdekatan
+//   - rapikan overlap dan beri durasi minimum bila ada ruang
+//   - hitung ulang `lines` supaya preview == export
+function refineSegments(segments, cfg) {
+  const conf = cfg || {};
+  const maxDur = Number(conf.maxSegmentDuration) || 3;
+  const maxWords = Number(conf.maxWords) || 7;
+  const maxLines = Number(conf.maxLines) || 2;
+  const maxLineLength = Number(conf.maxLineLength) || 40;
+  const maxChars = maxLines * maxLineLength;
+  const maxCps = Number(conf.maxCharsPerSecond) || 22;
+  const GAP = 0.02;
+
+  const reflow = (seg) => {
+    const text = String(seg.text || '').trim();
+    const words = text.split(/\s+/).filter(Boolean);
+    return {
+      ...seg,
+      text,
+      wordCount: Number(seg.wordCount) || words.length,
+      lines: layoutCaptionLines(words, maxLines, maxLineLength)
+    };
+  };
+
+  const splitByWords = (seg) => {
+    const words = Array.isArray(seg.words) ? seg.words : [];
+    if (words.length < 2) return [seg];
+    const chunks = [];
+    let cur = [];
+    const flush = () => {
+      if (!cur.length) return;
+      const text = cur.map((w) => String(w.text || '').trim()).filter(Boolean).join(' ');
+      chunks.push({
+        ...seg,
+        id: 0,
+        start: Number(cur[0].start) || Number(seg.start) || 0,
+        end: Number(cur[cur.length - 1].end) || Number(seg.end) || 0,
+        text,
+        words: cur.slice(),
+        wordCount: cur.length
+      });
+      cur = [];
+    };
+    for (const w of words) {
+      const next = cur.concat([w]);
+      const text = next.map((x) => String(x.text || '').trim()).filter(Boolean).join(' ');
+      const startMs = Number(next[0].start) || Number(seg.start) || 0;
+      const endMs = Number(next[next.length - 1].end) || Number(seg.end) || 0;
+      const tooLong = (endMs - startMs) > maxDur + 0.05 || next.length > maxWords || text.length > maxChars;
+      if (cur.length && tooLong) flush();
+      cur.push(w);
+    }
+    flush();
+    return chunks.length ? chunks : [seg];
+  };
+
+  // 1) pecah hanya jika teks tidak muat dibaca dalam durasinya
+  const list = [];
+  for (const seg of segments || []) {
+    const startSec = Number(seg.start) || 0;
+    const endSec = Number(seg.end) || startSec;
+    const dur = Math.max(0, endSec - startSec);
+    const text = String(seg.text || '').trim();
+    const wordCount = Number(seg.wordCount) || text.split(/\s+/).filter(Boolean).length;
+    const density = dur > 0 ? text.length / dur : 0;
+    const shouldSplit = Array.isArray(seg.words) && seg.words.length > 1 &&
+      (dur > maxDur + 0.05 || wordCount > maxWords || text.length > maxChars || density > maxCps);
+    if (shouldSplit) list.push(...splitByWords(seg));
+    else list.push({ ...seg });
+  }
+
+  // 2) rapikan overlap dan batasi durasi tampil (tidak pernah menggabung).
+  // Satu kata pun bisa punya timestamp 4-5 detik karena STT menyerap jeda;
+  // caption seperti itu tidak terbaca, jadi durasinya dipotong.
+  for (let i = 0; i < list.length; i++) {
+    const seg = list[i];
+    const next = list[i + 1];
+    const startSec = Number(seg.start) || 0;
+    let endSec = Number(seg.end) || startSec;
+    if (endSec - startSec > maxDur) endSec = startSec + maxDur;
+    if (next) {
+      const nextStart = Number(next.start) || endSec;
+      if (endSec > nextStart - GAP) endSec = Math.max(startSec + 0.05, nextStart - GAP);
+    }
+    list[i] = reflow({ ...seg, start: startSec, end: endSec });
+  }
+
+  return list.map((seg, idx) => ({ ...seg, id: idx + 1 }));
+}
+
 function AutoCaptionEngine(options = {}) {
   const config = {
     style: options.style || 'dynamic',
@@ -493,7 +588,7 @@ function AutoCaptionEngine(options = {}) {
       const cleaned = String(content).replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
       const parsedContent = JSON.parse(cleaned);
       return {
-        segments: parsedContent.segments || [],
+        segments: refineSegments(parsedContent.segments || [], config),
         provider: 'llm',
         confidence: parsedContent.confidence || 85
       };
@@ -611,7 +706,7 @@ function AutoCaptionEngine(options = {}) {
     }
 
     return {
-      segments,
+      segments: refineSegments(segments, config),
       provider: 'heuristic',
       confidence: 75
     };
@@ -754,6 +849,7 @@ module.exports = AutoCaptionEngine;
 
 // Standalone layout helper shared with the server for preview/export parity.
 module.exports.layoutCaptionLines = layoutCaptionLines;
+module.exports.refineSegments = refineSegments;
 module.exports.analyzeSpeechRhythm = (words) => {
   try { return AutoCaptionEngine({}).helpers.analyzeSpeechRhythm(words); } catch (e) { return { gaps: [], duration: 0, wordsPerSec: 0, charsPerSec: 0 }; }
 };

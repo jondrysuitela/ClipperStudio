@@ -115,8 +115,12 @@ t("BUG1 rebuild timestamps asli dipertahankan (dari canonical words, bukan inter
   for (const s of result.segments) {
     if (!Array.isArray(s.words) || !s.words.length) continue;
     if (s.words[0].start !== s.start) throw new Error(`word0.start=${s.words[0].start}, seg.start=${s.start}`);
-    if (s.words[s.words.length - 1].end !== s.end)
-      throw new Error(`last.end=${s.words[s.words.length - 1].end}, seg.end=${s.end}`);
+    // refineSegments() boleh memperpanjang segmen pendek agar terbaca
+    // (min 1.2s), tetapi awal tetap dari kata asli dan akhir tidak melewati
+    // perpanjangan itu — bukan hasil interpolasi.
+    const lastEnd = s.words[s.words.length - 1].end;
+    if (s.end < lastEnd || s.end > lastEnd + 1.25)
+      throw new Error(`last.end=${lastEnd}, seg.end=${s.end} (di luar toleransi refine)`);
   }
 });
 

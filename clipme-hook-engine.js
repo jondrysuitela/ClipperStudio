@@ -371,6 +371,22 @@ function scoreHook(sentence, lang, context) {
   const authenticity = Math.min(6, confession * 3 + narrative * 3);
   score += authenticity;
 
+  // ---- sinyal tambahan (upgrade 2026-11) ----------------------------------
+  // Empat pola yang di riset hook terbukti menaikkan retensi, dan sebelumnya
+  // tidak dihitung: pembalikan (contrarian), taruhan/kerugian, sapaan langsung,
+  // dan jangkar konkret (tahun/nominal).
+  const contrarian = /\b(tapi|tetapi|padahal|sebenarnya|justru|nyatanya|actually|but|however|yet|instead|in fact)\b/i.test(text);
+  if (contrarian) score += 7;
+
+  const stakes = /\b(rugi|hilang|gagal|bangkrut|bahaya|kena|denda|salah|keliru|trauma|takut|kehilangan|remuk|hancur|lost|fail|broke|risk|cost|mistake|wrong|danger|waste)\b/i.test(text);
+  if (stakes) score += 7;
+
+  const secondPerson = /\b(kamu|lu|lo|anda|kau|you|your|kalian)\b/i.test(text);
+  if (secondPerson) score += 5;
+
+  const concreteAnchor = /\b(19|20)\d{2}\b|\b\d{1,3}([.,]\d+)?\s?(juta|miliar|milyar|ribu|rb|jt|m|k)\b/i.test(text);
+  if (concreteAnchor) score += 4;
+
   // ---- penalties ----
   const penalties = { filler: 0, repetition: 0, hedge: 0, long: 0, deictic: 0, pronounNoAntecedent: 0 };
 
@@ -430,11 +446,13 @@ function scoreHook(sentence, lang, context) {
 
   score = Math.max(0, Math.min(100, Math.round(score)));
 
-  const evidence = { specificity, density, curiosity, tension, novelty, clarity: Math.min(8, wc >= 4 && wc <= 16 ? 6 : wc <= 22 ? 3 : 0) + (/[.!?…]$/.test(text) ? 2 : 0), context: contextInd, value, authenticity };
+  const band = score >= 75 ? "strong" : score >= 55 ? "medium" : "weak";
+  const evidence = { specificity, density, curiosity, tension, novelty, contrarian: contrarian ? 1 : 0, stakes: stakes ? 1 : 0, secondPerson: secondPerson ? 1 : 0, anchor: concreteAnchor ? 1 : 0, clarity: Math.min(8, wc >= 4 && wc <= 16 ? 6 : wc <= 22 ? 3 : 0) + (/[.!?…]$/.test(text) ? 2 : 0), context: contextInd, value, authenticity };
   const deepResult = dimensionScores(text, lang, context, evidence, penalties);
 
   return {
     score,
+    band,
     evidence,
     penalties,
     deep: deepResult.deep,

@@ -168,6 +168,57 @@
     };
   }
 
+  // ── Perapian association: kurangi lompatan kamera ────────────────────────
+  // Face detector bisa menghasilkan crop yang melompat antar segmen walau
+  // pembicaranya sama. Di sini: gabung potongan track yang sama, batasi
+  // pergeseran horizontal per potongan, dan pastikan tiap potongan cukup
+  // lama untuk terlihat (bukan kedip satu frame).
+  function smoothAssociations(list, options) {
+    const opts = options || {};
+    const maxShiftRatio = finite(opts.maxShiftRatio, 0.12);
+    const minSpanMs = finite(opts.minSpanMs, 500);
+    const joinGapMs = finite(opts.joinGapMs, 120);
+
+    const merged = [];
+    for (const a of list || []) {
+      const prev = merged[merged.length - 1];
+      const sameTrack = prev && prev.track_id != null && prev.track_id === a.track_id;
+      if (sameTrack && (Number(a.start_ms) || 0) - (Number(prev.end_ms) || 0) <= joinGapMs) {
+        prev.end_ms = Math.max(Number(prev.end_ms) || 0, Number(a.end_ms) || 0);
+        prev.mouth_motion = Math.max(Number(prev.mouth_motion) || 0, Number(a.mouth_motion) || 0);
+        continue;
+      }
+      merged.push({ ...a, crop: a.crop ? { ...a.crop } : a.crop });
+    }
+
+    // Batasi lompatan horizontal saat pembicara berganti.
+    for (let i = 1; i < merged.length; i++) {
+      const prev = merged[i - 1];
+      const cur = merged[i];
+      if (!prev.crop || !cur.crop) continue;
+      if (prev.track_id != null && prev.track_id === cur.track_id) continue;
+      const maxShift = Math.max(1, Math.round(cur.crop.w * maxShiftRatio));
+      const dx = Number(cur.crop.x) - Number(prev.crop.x);
+      if (Math.abs(dx) > maxShift) {
+        cur.crop.x = Math.round(Number(prev.crop.x) + Math.sign(dx) * maxShift);
+        cur.crop.x = clamp(cur.crop.x, 0, Math.max(0, Number(cur.sourceWidth) || cur.crop.x + cur.crop.w));
+      }
+    }
+
+    // Durasi minimum supaya crop tidak berkedip.
+    for (let i = 0; i < merged.length; i++) {
+      const a = merged[i];
+      const next = merged[i + 1];
+      const span = (Number(a.end_ms) || 0) - (Number(a.start_ms) || 0);
+      if (span >= minSpanMs) continue;
+      const limit = next ? (Number(next.start_ms) || 0) - 1 : (Number(a.start_ms) || 0) + minSpanMs;
+      const target = Math.min(limit, (Number(a.start_ms) || 0) + minSpanMs);
+      if (target > (Number(a.end_ms) || 0)) a.end_ms = target;
+    }
+
+    return merged;
+  }
+
   // ── Build association timeline (req 12: sama untuk CSS preview & FFmpeg) ──
   // Compact ke maksimal 48 (req 10) untuk menghindari batas panjang command
   // FFmpeg Windows.
@@ -253,6 +304,11 @@
       });
     }
 
+    // Rapikan dulu (gabung track sama, batasi lompatan, durasi minimum).
+    const smoothed = smoothAssociations(associations, opts);
+    associations.length = 0;
+    associations.push(...smoothed);
+
     // Compact ke maksimal 48: gabungkan segmen berurutan dengan track yang sama
     while (associations.length > MAX_ASSOCIATIONS) {
       let merged = false;
@@ -277,6 +333,7 @@
     selectActiveSpeaker,
     applyLookRoom,
     buildAssociations,
+    smoothAssociations,
     HYSTERESIS_FRAMES,
     HOLD_MS,
     LOOK_ROOM_FACTOR,
