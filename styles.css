@@ -2773,6 +2773,48 @@ textarea:focus-visible {
 .exports-jobs[hidden] { display: none; }
 .exports-jobs-text { flex: 1; }
 
+/* Workspace bertahap: satu halaman untuk source → editor → caption → export */
+.ws-stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 14px 0 0;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-soft);
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+}
+.ws-stage-tab {
+  flex: 1 1 150px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font: 600 11px/1 var(--font-mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.ws-stage-tab span { opacity: .55; }
+.ws-stage-tab:hover { color: var(--text); border-color: var(--line-hover); }
+.ws-stage-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.ws-stage-tab.active span { opacity: .6; }
+.ws-stage { display: none; }
+.ws-stage.active { display: block; }
+.ws-stage > .panel + .panel { margin-top: 14px; }
+
 /* Rail langkah: memberi urutan kerja yang sama dengan sidebar */
 .flow-steps {
   display: flex;

@@ -1278,17 +1278,46 @@ function renderLibrary() {
   });
 }
 
+// View lama yang sekarang menjadi tahap di dalam workspace.
+const WORKSPACE_STAGES = { newproject: "source", studio: "editor", captions: "captions", processing: "export" };
+
+function setWorkspaceStage(stage) {
+  const key = WORKSPACE_STAGES[stage] || stage;
+  const tabs = $$(".ws-stage-tab");
+  if (!tabs.length) return;
+  tabs.forEach((tab) => {
+    const active = tab.dataset.wsStage === key;
+    tab.classList.toggle("active", active);
+    if (active) tab.setAttribute("aria-current", "step");
+    else tab.removeAttribute("aria-current");
+  });
+  $$(".ws-stage").forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.wsPanel === key);
+  });
+  if (key === "captions") {
+    const capPanel = document.getElementById("captionTimelinePanel");
+    if (capPanel && state.projectId) capPanel.style.display = "";
+    renderCaptionsWorkspace();
+  }
+  updateWorkspaceHeader(key);
+}
+
 function showView(view) {
+  const stage = WORKSPACE_STAGES[view] || "";
+  const target = stage ? "workspace" : view;
   const prevPanel = document.querySelector(".app-view.active");
   $$(".app-view").forEach((panel) => {
-    panel.classList.toggle("active", panel.dataset.viewPanel === view);
+    panel.classList.toggle("active", panel.dataset.viewPanel === target);
   });
-  if (prevPanel && prevPanel.dataset.viewPanel === "captions" && view !== "captions") capPlayStop();
-  // Studio / New Project / Processing adalah layar alur, bukan tujuan sidebar.
-  // Sorot tujuan terdekat supaya posisi user tetap terbaca dari navigasi.
-  const navView = view === "studio" || view === "newproject"
-    ? "library"
-    : view === "processing" ? "exports" : view;
+  if (stage) setWorkspaceStage(stage);
+  else if (target === "workspace") {
+    // Klik langsung menu Workspace: pertahankan tahap terakhir yang dibuka.
+    const current = document.querySelector(".ws-stage.active");
+    updateWorkspaceHeader(current ? current.dataset.wsPanel : "source");
+  }
+  if (prevPanel && prevPanel.dataset.viewPanel === "workspace" && target !== "workspace") capPlayStop();
+  // Semua layar alur berada di dalam Workspace, jadi sorot entri itu.
+  const navView = target === "workspace" ? "workspace" : target;
   $$(".nav-item").forEach((item) => {
     const active = item.dataset.view === navView;
     item.classList.toggle("active", active);
@@ -1296,38 +1325,32 @@ function showView(view) {
     else item.removeAttribute("aria-current");
   });
   const backBtn = document.getElementById("backToResultsBtn");
-  if (backBtn) backBtn.hidden = !(view === "studio" && resultsState.projectId);
+  if (backBtn) backBtn.hidden = !(target === "workspace" && stage === "editor" && resultsState.projectId);
   const saveBtn = document.getElementById("saveProjectBtn");
-  if (saveBtn) saveBtn.hidden = !(view === "studio" && state.projectId);
-  if (view === "captions") {
-    const capPanel = document.getElementById("captionTimelinePanel");
-    if (capPanel && state.projectId) capPanel.style.display = "";
-    renderCaptionsWorkspace();
-  }
+  if (saveBtn) saveBtn.hidden = !(target === "workspace" && stage === "editor" && state.projectId);
   if (view === "settings") fillSettingsView();
-  if (view === "studio") updateStudioHeader();
 }
 
-// Header Studio: konteks project aktif supaya layar ini tidak terasa lepas
-// dari alur (panel Source tinggal di New Project).
-function updateStudioHeader() {
-  const title = document.getElementById("studioTitle");
-  const meta = document.getElementById("studioMeta");
+// Header Workspace: konteks project + nama tahap aktif.
+const WS_STAGE_META = {
+  source: "Source & analisis: tempel URL atau upload video, lalu Generate Best Clips.",
+  editor: "Editor: pilih clip, atur hook/caption, cek preview, lalu export.",
+  captions: "Captions: pilih template, atur style, dan rapikan timeline kata.",
+  export: "Export: pantau job render dan unduh hasilnya."
+};
+function updateWorkspaceHeader(stage) {
+  const title = document.getElementById("wsTitle");
+  const meta = document.getElementById("wsMeta");
   if (!title || !meta) return;
+  const key = WORKSPACE_STAGES[stage] || stage || "source";
   const hasProject = Boolean(state.projectId);
-  if (!hasProject) {
-    title.textContent = "Belum ada project";
-    meta.textContent = "Buka project dari Projects atau buat project baru untuk mulai mengedit clip.";
-    return;
-  }
   const active = state.activeClip;
   const named = active && active.title ? String(active.title).trim() : "";
-  title.textContent = named || state.sourceName || "Project aktif";
-  const bits = [`${clips.length} clip`];
-  if (state.sourceName) bits.push(state.sourceName);
-  meta.textContent = bits.join(" · ");
+  title.textContent = hasProject ? (named || state.sourceName || "Project aktif") : "Buat project baru";
+  const bits = [WS_STAGE_META[key] || ""];
+  if (hasProject) bits.unshift(`${clips.length} clip`);
+  meta.textContent = bits.filter(Boolean).join(" · ");
 }
-
 // Pindahkan panel eksisting ke workspace barunya (node move — ID/listener utuh).
 function mountWorkspaces() {
   const uploadPanel = document.querySelector(".upload-panel");
@@ -6265,8 +6288,11 @@ if ($("#backToProjectsBtn")) $("#backToProjectsBtn").addEventListener("click", (
 if ($("#npBackBtn")) $("#npBackBtn").addEventListener("click", () => showView("library"));
 if ($("#libNewProjectBtn")) $("#libNewProjectBtn").addEventListener("click", openCreateWorkspace);
 if ($("#sidebarNewProjectBtn")) $("#sidebarNewProjectBtn").addEventListener("click", openCreateWorkspace);
-if ($("#studioOpenCaptionsBtn")) $("#studioOpenCaptionsBtn").addEventListener("click", () => showView("captions"));
-if ($("#studioOpenExportsBtn")) $("#studioOpenExportsBtn").addEventListener("click", () => showView("exports"));
+$$(".ws-stage-tab").forEach((tab) => {
+  tab.addEventListener("click", () => setWorkspaceStage(tab.dataset.wsStage));
+});
+if ($("#wsNewProjectBtn")) $("#wsNewProjectBtn").addEventListener("click", openCreateWorkspace);
+if ($("#wsOpenProjectsBtn")) $("#wsOpenProjectsBtn").addEventListener("click", () => showView("library"));
 if ($("#exportsOpenProcessingBtn")) $("#exportsOpenProcessingBtn").addEventListener("click", () => showView("processing"));
 if ($("#capOpenLibraryBtn")) $("#capOpenLibraryBtn").addEventListener("click", openTemplateGallery);
 if ($("#setOpenTemplates")) $("#setOpenTemplates").addEventListener("click", () => { showView("captions"); openTemplateGallery(); });

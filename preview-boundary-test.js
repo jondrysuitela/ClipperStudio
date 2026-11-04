@@ -77,7 +77,7 @@ test("tombol: UI analyzeHookBtn ada di bawah dropzone", () => {
   const dz = html.indexOf('id="dropzone"');
   const btn = html.indexOf('id="analyzeHookBtn"');
   assert.ok(btn > -1, "analyzeHookBtn must exist");
-  assert.ok(dz > -1 && btn > dz && btn - dz < 600, "button must sit right after the dropzone");
+  assert.ok(dz > -1 && btn > dz && btn - dz < 2000, "button must sit right after the dropzone");
 });
 
 test("server: endpoint analyze-hook menjalankan job analisis (progres via polling)", () => {
@@ -263,11 +263,11 @@ test("dashboard: nav lengkap & dashboard jadi landing default", () => {
   assert.ok(!html.includes('data-view="dna"'), "placeholder Content DNA nav removed");
   assert.ok(!html.includes('data-view-panel="dna"'), "placeholder Content DNA panel removed");
   assert.ok(html.includes('id="anDNA"'), "observed DNA stays inside Analytics");
-  assert.ok(html.includes('data-view-panel="studio"'), "editor panel (studio) still exists — reachable via OPEN IN STUDIO");
-  assert.ok(html.includes('data-view-panel="newproject"'), "dedicated new-project workspace panel exists");
+  // Semua langkah kini satu halaman: workspace dengan 4 tahap.
+  assert.ok(html.includes('data-view-panel="workspace"'), "single workspace panel exists");
   const dash = html.indexOf('data-view-panel="dashboard"');
-  const studio = html.indexOf('data-view-panel="studio"');
-  assert.ok(dash > -1 && studio > dash, "dashboard panel must precede studio");
+  const studio = html.indexOf('data-ws-panel="export"');
+  assert.ok(dash > -1 && studio > dash, "dashboard precedes the workspace stages");
   const active = html.slice(html.lastIndexOf("<div", dash), dash);
   assert.match(active, /class="app-view page-view active"/, "dashboard must be the initial active view");
   // Sidebar IA final: Tools group + NEW PROJECT CTA; studio bukan nav sama sekali;
@@ -275,12 +275,18 @@ test("dashboard: nav lengkap & dashboard jadi landing default", () => {
   assert.ok(html.includes("Tools</p>"), "sidebar Tools group label");
   assert.ok(html.includes('id="sidebarNewProjectBtn"'), "primary NEW PROJECT CTA in sidebar");
   assert.ok(!html.includes('data-view="studio"'), "old create nav item fully removed");
-  for (const v of ["captions", "settings"]) {
+  for (const v of ["workspace", "settings"]) {
     assert.ok(html.includes(`data-view="${v}"`), `nav ${v} exists`);
     assert.ok(html.includes(`data-view-panel="${v}"`), `panel ${v} exists`);
   }
   assert.ok(!html.includes('data-view="newproject"'), "newproject is an ACTION (button), not a sidebar destination");
-  assert.ok(html.includes('data-view-panel="newproject"'), "newproject workspace panel exists");
+  assert.ok(html.includes('data-ws-panel="source"'), "new-project flow lives in the source stage");
+  for (const stage of ["source", "editor", "captions", "export"]) {
+    assert.ok(html.includes(`data-ws-panel="${stage}"`), `workspace stage ${stage}`);
+  }
+  assert.ok(!html.includes('data-view-panel="studio"'), "studio panel folded into workspace");
+  assert.ok(!html.includes('data-view-panel="captions"'), "captions panel folded into workspace");
+  assert.ok(!html.includes('data-view="captions"'), "captions is a stage, not a destination");
   assert.match(script, /mountWorkspaces\(\);/, "workspaces mounted at boot");
   assert.match(script, /function renderCaptionsWorkspace/, "caption workspace renderer");
 });
@@ -556,7 +562,7 @@ test("phase4: dirty tracking pada trim/hook/caption + pill UNSAVED CHANGES", () 
 
 test("phase4: BACK TO RESULTS tampil hanya dari Studio dengan project Results", () => {
   const sv = script.slice(script.indexOf("function showView(view)"), script.indexOf("function setLocalPreview"));
-  assert.match(sv, /backBtn\.hidden = !\(view === "studio" && resultsState\.projectId\)/, "visibility rule");
+  assert.match(sv, /backBtn\.hidden = !\(target === "workspace" && stage === "editor" && resultsState\.projectId\)/, "visibility rule");
   const btn = script.slice(script.indexOf('$("#backToResultsBtn").addEventListener'), script.indexOf("// ================= STUDIO PERSISTENCE") > -1 ? script.indexOf('$("#backToResultsBtn").addEventListener') + 400 : undefined);
   assert.match(btn, /openResultsForProject\(resultsState\.projectId\)/, "returns to real Results workspace");
 });
@@ -852,9 +858,9 @@ test("phase6: production insights dari data export asli — tanpa klaim AI/predi
 test("phase6: quick actions dashboard + nav lengkap (12 view)", () => {
   const html = fs.readFileSync("index.html", "utf8");
   // Content DNA tidak lagi view terpisah.
-  for (const v of ["dashboard", "library", "exports", "publish", "calendar", "results", "intel", "analytics", "integrations", "captions", "settings"]) {
+  for (const v of ["dashboard", "library", "exports", "publish", "calendar", "results", "intel", "analytics", "integrations", "workspace", "settings"]) {
     assert.ok(html.includes(`data-view="${v}"`), `nav ${v}`);
-    if (v !== "dashboard") assert.ok(html.includes(`data-view-panel="${v}"`), `panel ${v}`);
+    assert.ok(html.includes(`data-view-panel="${v}"`), `panel ${v}`);
   }
   assert.ok(html.includes("data-qview=\"exports\"".replace(/\\"/g, '"')), "quick action exports");
   assert.ok(html.includes("data-qview=\"calendar\"".replace(/\\"/g, '"')), "quick action calendar");

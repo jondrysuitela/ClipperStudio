@@ -46,14 +46,14 @@
         <button class="nav-item" data-view="library" type="button">
         <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span> <span class="nav-label">Projects</span>
         </button>
+        <button class="nav-item" data-view="workspace" type="button">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/></svg></span> <span class="nav-label">Workspace</span>
+        </button>
         <button class="nav-item" data-view="intel" type="button">
         <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg></span> <span class="nav-label">Analyze</span>
         </button>
         <button class="nav-item" data-view="results" type="button">
         <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="9"/><path d="M10 9l6 3-6 3z"/></svg></span> <span class="nav-label">Clips</span>
-        </button>
-        <button class="nav-item" data-view="captions" type="button">
-        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15h4M13 15h4M6 10h12"/></svg></span> <span class="nav-label">Captions</span>
         </button>
         <button class="nav-item" data-view="exports" type="button">
         <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M12 3v12m0 0-4-4m4 4 4-4"/><path d="M4 21h16"/></svg></span> <span class="nav-label">Exports</span>
@@ -280,492 +280,555 @@
       </section>
     </div>
 
-    <div class="app-view page-view" data-view-panel="newproject">
-      <section class="panel res-hero">
+    <div class="app-view page-view" data-view-panel="workspace">
+      <section class="panel res-hero ws-hero">
         <div>
-          <button class="ghost-button compact" id="npBackBtn" type="button">&larr; Back to Projects</button>
-          <p class="eyebrow">New Project</p>
-          <h2>Buat project baru</h2>
-          <p class="dash-sub">Source + analisis AI + konfigurasi. Hasil clip tampil di tab Results setelah generate.</p>
-          <ol class="flow-steps" aria-label="Alur pengerjaan">
-            <li data-step-state="current"><span>01</span>Source</li>
-            <li><span>02</span>Analyze</li>
-            <li><span>03</span>Results</li>
-            <li><span>04</span>Captions</li>
-            <li><span>05</span>Export</li>
-          </ol>
-        </div>
-      </section>
-      <div id="npMount">
-            <div class="upload-panel panel">
-            <div class="panel-heading">
-              <h2>Source</h2>
-              <span class="status-pill" id="fileMeta">Ready</span>
-            </div>
-            <div class="create-topbar">
-              <span class="field-label" style="margin:0">ASPECT RATIO</span>
-              <div class="segmented" id="createRatioSegmented">
-                <button class="active" data-cratio="portrait" type="button">9:16</button>
-                <button data-cratio="square" type="button">1:1</button>
-                <button data-cratio="four5" type="button">4:5</button>
-                <button data-cratio="wide" type="button">16:9</button>
-              </div>
-            </div>
-            <div class="dropzone" id="dropzone">
-              <input type="file" accept="video/*" id="videoInput">
-              <div class="drop-icon">+</div>
-              <span>Drop video or click to upload</span>
-              <span>MP4, MOV, MKV, WebM</span>
-              <div class="dz-file-tag" id="dzFileTag" hidden>
-                <span class="dz-check">✓</span>
-                <span class="dz-name" id="dzFileName"></span>
-                <span class="dz-size" id="dzFileSize"></span>
-              </div>
-            </div>
-            <button class="wide-button primary-button" id="analyzeHookBtn" type="button" title="AI analyzes video: full STT transcript then AI Clip Director finds hooks, story structure, and best clip candidates">
-              Generate Best Clips
-            </button>
-            <div class="field-label" style="margin-top:10px">Project name (opsional)</div>
-            <input class="inspector-input" id="projectNameInput" type="text" maxlength="80" placeholder="Nama project — kosongkan untuk otomatis">
-            <div class="settings-grid" style="display:none">
-              <label>Processing profile
-                <select id="processingProfileSelect" title="AUTO memakai pipeline default yang ada. FAST/QUALITY menyusul di fase berikutnya.">
-                  <option value="auto" selected>AUTO — pipeline default</option>
-                  <option value="fast" disabled>FAST — coming soon</option>
-                  <option value="quality" disabled>QUALITY — coming soon</option>
-                </select>
-              </label>
-            </div>
-            <div class="source-info" id="sourceInfoCard" hidden aria-label="Source information">
-              <p class="field-label">SOURCE</p>
-              <div class="si-grid">
-                <span class="si-key">File</span><strong class="si-val" id="siName">&mdash;</strong>
-                <span class="si-key">Duration</span><strong class="si-val" id="siDuration">&mdash;</strong>
-                <span class="si-key">Resolution</span><strong class="si-val" id="siRes">&mdash;</strong>
-                <span class="si-key">FPS</span><strong class="si-val" id="siFps">&mdash;</strong>
-                <span class="si-key">Audio</span><strong class="si-val" id="siAudio">&mdash;</strong>
-              </div>
-            </div>
-            <div class="engine-readiness" id="engineReadiness">
-              <p class="field-label">ENGINE READINESS</p>
-              <div class="er-row"><span class="er-name">CPU</span><span class="er-state" id="erCpu" data-state="unknown">&mdash; UNKNOWN</span></div>
-              <div class="er-row"><span class="er-name">GPU</span><span class="er-state" id="erGpu" data-state="unknown">&mdash; UNKNOWN</span></div>
-              <div class="er-row"><span class="er-name">FFMPEG</span><span class="er-state" id="erFfmpeg" data-state="unknown">&mdash; UNKNOWN</span></div>
-              <div class="er-row"><span class="er-name">SPEECH-TO-TEXT</span><span class="er-state" id="erStt" data-state="unknown">&mdash; UNKNOWN</span></div>
-              <div class="er-row"><span class="er-name">LOCAL AI</span><span class="er-state" id="erAi" data-state="unknown">&mdash; UNKNOWN</span></div>
-              <div class="er-row"><span class="er-name">HOOK ENGINE</span><span class="er-state" id="erHook" data-state="unknown">&mdash; UNKNOWN</span></div>
-              <div class="er-row"><span class="er-name">CAPTION ENGINE</span><span class="er-state" id="erCaption" data-state="unknown">&mdash; UNKNOWN</span></div>
-              <p class="er-summary" id="erSummary">CHECKING&hellip;</p>
-            </div>
-            <div class="url-row">
-              <textarea id="videoUrl" rows="2" placeholder="Paste 1 atau lebih URL YouTube&#10;satu URL per baris (max 10)"></textarea>
-              <button class="primary-button" id="attachUrl" type="button">Analyze</button>
-            </div>
-            <div class="process-steps" id="processSteps">
-              <span data-step="metadata">Metadata</span>
-              <span data-step="clips">Clips</span>
-              <span data-step="preview">Preview</span>
-              <span data-step="export">Export</span>
-            </div>
-            <div class="settings-grid">
-              <label>Hook strategy
-                <select id="hookStrategySelect" title="Preferensi jenis hook untuk ranking kandidat (AI = seimbang otomatis)">
-                  <option value="balanced" selected>Balanced / AI</option>
-                  <option value="curiosity">Curiosity</option>
-                  <option value="story">Story</option>
-                  <option value="educational">Educational</option>
-                  <option value="direct">Direct Value</option>
-                  <option value="controversy">Controversy</option>
-                </select>
-              </label>
-              <input class="inspector-input" id="focusInput" type="text" maxlength="120" placeholder="Content focus (optional) — e.g. business growth">
-            </div>
-            <details class="accordion-section" open>
-              <summary class="accordion-header"><h3>Generation Mode</h3><span class="accordion-icon">&#9660;</span></summary>
-              <div class="accordion-body">
-                <div class="segmented" id="genModeSegmented">
-                  <button class="active" data-genmode="ai" type="button" title="AI determines optimal clip configuration">AI Recommended</button>
-                  <button data-genmode="hybrid" type="button" title="You set constraints, AI determines boundaries">Hybrid</button>
-                  <button data-genmode="manual" type="button" title="Duration locked exactly to your value">Manual</button>
-                </div>
-                <div class="settings-grid" style="margin-top:10px">
-                  <label id="maxCeilingLabel">Max clip duration (sec)
-                    <input class="inspector-input" id="maxCeilingInput" type="number" min="15" max="180" step="5" value="90" title="Hard ceiling — AI may produce shorter clips when natural ending is found">
-                  </label>
-                  <label>Number of clips
-                    <select id="maxClipsSelect" title="Final clip count after ranking">
-                      <option value="4">4</option>
-                      <option value="6" selected>6</option>
-                      <option value="8">8</option>
-                      <option value="10">10</option>
-                    </select>
-                  </label>
-                </div>
-              </div>
-            </details>
-            <details class="accordion-section" open>
-              <summary class="accordion-header"><h3>Auto Caption</h3><span class="accordion-icon">&#9660;</span></summary>
-              <div class="accordion-body">
-                <div class="cap-config-grid" id="createCapConfig">
-                  <span class="cap-slot" id="slotAutoCaption"></span>
-                  <span class="cap-slot" id="slotFiller"></span>
-                </div>
-                <div class="proc-actions" style="gap:8px; margin-top:6px">
-                  <button class="secondary-button compact" id="templateGalleryBtn" type="button" title="44 real caption templates with preview">Caption Template Library</button>
-                  <button class="ghost-button compact" id="createTranslateBtn" type="button" title="Translate caption segments offline (Indonesia ↔ English)">Translate Caption</button>
-                  <span class="caption-status" id="createTplName"></span>
-                </div>
-              </div>
-            </details>
-            <button class="wide-button primary-button" id="generateButton" type="button" disabled style="margin-top:8px">Generate clips</button>
-          </div>
-      </div>
-    </div>
-
-    <div class="app-view page-view" data-view-panel="studio">
-      <section class="panel res-hero studio-hero">
-        <div>
-          <p class="eyebrow">Studio</p>
-          <h2 id="studioTitle">Belum ada project</h2>
-          <p class="dash-sub" id="studioMeta">Buka project dari Projects atau buat project baru untuk mulai mengedit clip.</p>
+          <p class="eyebrow">Workspace</p>
+          <h2 id="wsTitle">Buat project baru</h2>
+          <p class="dash-sub" id="wsMeta">Satu alur: source &rarr; editor &rarr; caption &rarr; export. Tidak perlu pindah halaman.</p>
         </div>
         <div class="res-hero-actions">
-          <button class="secondary-button compact" id="studioOpenCaptionsBtn" type="button">CAPTIONS</button>
-          <button class="secondary-button compact" id="studioOpenExportsBtn" type="button">EXPORTS</button>
+          <button class="secondary-button compact" id="wsNewProjectBtn" type="button">PROJECT BARU</button>
+          <button class="ghost-button compact" id="wsOpenProjectsBtn" type="button">PROJECTS</button>
         </div>
       </section>
-      <div class="studio-grid">
-        <div class="studio-left">
-          <!-- Upload Panel -->
-
-        <!-- Clips Panel -->
-        <div class="clips-panel panel">
-          <div class="panel-heading">
-            <h2>Clips</h2>
-            <div>
-              <button class="ghost-button compact" id="undoBtn" type="button" title="Undo (Ctrl+Z)">Undo</button>
-              <button class="ghost-button compact" id="redoBtn" type="button" title="Redo (Ctrl+Y)">Redo</button>
-              <button class="ghost-button compact" id="rerankBtn" type="button" title="Ubah ranking tanpa STT ulang — pakai cache transkrip">Re-rank</button>
-              <button class="ghost-button compact" id="sortClips" type="button">Sort by score</button>
-              <button class="ghost-button compact" id="selectAllClips" type="button">Select all</button>
-              <button class="primary-button compact" id="exportAllBtn" type="button">Export all</button>
-              <button class="secondary-button compact" id="exportCombinedBtn" type="button">Gabung jadi 1</button>
-            </div>
-          </div>
-          <div class="clip-list" id="clipList"></div>
-        </div>
-        </div>
-
-        <!-- Preview Panel -->
-        <div class="preview-panel panel">
-          <div class="panel-heading">
-            <h2 id="previewTitle">Clip 01 - Select a clip</h2>
-            <div class="segmented">
-              <button class="active" data-ratio="portrait" type="button">9:16</button>
-              <button data-ratio="square" type="button">1:1</button>
-              <button data-ratio="wide" type="button">16:9</button>
-              <button data-ratio="four5" type="button">4:5</button>
-            </div>
-          </div>
-          <div class="video-stage">
-            <div class="phone-frame portrait" id="previewFrame">
-              <video class="preview-video" id="previewVideo" playsinline></video>
-              <div class="cut-to-face-badge" id="cutToFacePreviewBadge" aria-live="polite"></div>
-              <div class="caption-box" id="captionBox" style="display:none"></div>
-              <div class="live-caption" id="liveCaption"></div>
-            </div>
-          </div>
-            <div class="timeline">
-              <span id="clipTime" class="tl-label">00:00 - 00:00</span>
-              <div class="timeline-tracks-container" style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
-                <div class="timeline-track" id="progressTrack">
-                  <span id="progressBar" class="progress-fill" style="width:0%"></span>
-                  <span id="trimHandleStart" class="trim-handle trim-handle-start" title="Seret untuk ubah awal clip"></span>
-                  <span id="trimHandleEnd" class="trim-handle trim-handle-end" title="Seret untuk ubah akhir clip"></span>
+      <nav class="ws-stages" aria-label="Tahap workspace">
+        <button class="ws-stage-tab active" type="button" data-ws-stage="source" aria-controls="wsStageSource"><span>01</span>Source</button>
+        <button class="ws-stage-tab" type="button" data-ws-stage="editor" aria-controls="wsStageEditor"><span>02</span>Editor</button>
+        <button class="ws-stage-tab" type="button" data-ws-stage="captions" aria-controls="wsStageCaptions"><span>03</span>Captions</button>
+        <button class="ws-stage-tab" type="button" data-ws-stage="export" aria-controls="wsStageExport"><span>04</span>Export</button>
+      </nav>
+      <section class="ws-stage active" data-ws-panel="source" id="wsStageSource" aria-label="Source">
+                  <div class="upload-panel panel">
+                  <div class="panel-heading">
+                    <h2>Source</h2>
+                    <span class="status-pill" id="fileMeta">Ready</span>
+                  </div>
+                  <div class="create-topbar">
+                    <span class="field-label" style="margin:0">ASPECT RATIO</span>
+                    <div class="segmented" id="createRatioSegmented">
+                      <button class="active" data-cratio="portrait" type="button">9:16</button>
+                      <button data-cratio="square" type="button">1:1</button>
+                      <button data-cratio="four5" type="button">4:5</button>
+                      <button data-cratio="wide" type="button">16:9</button>
+                    </div>
+                  </div>
+                  <div class="dropzone" id="dropzone">
+                    <input type="file" accept="video/*" id="videoInput">
+                    <div class="drop-icon">+</div>
+                    <span>Drop video or click to upload</span>
+                    <span>MP4, MOV, MKV, WebM</span>
+                    <div class="dz-file-tag" id="dzFileTag" hidden>
+                      <span class="dz-check">✓</span>
+                      <span class="dz-name" id="dzFileName"></span>
+                      <span class="dz-size" id="dzFileSize"></span>
+                    </div>
+                  </div>
+                  <button class="wide-button primary-button" id="analyzeHookBtn" type="button" title="AI analyzes video: full STT transcript then AI Clip Director finds hooks, story structure, and best clip candidates">
+                    Generate Best Clips
+                  </button>
+                  <div class="field-label" style="margin-top:10px">Project name (opsional)</div>
+                  <input class="inspector-input" id="projectNameInput" type="text" maxlength="80" placeholder="Nama project — kosongkan untuk otomatis">
+                  <div class="settings-grid" style="display:none">
+                    <label>Processing profile
+                      <select id="processingProfileSelect" title="AUTO memakai pipeline default yang ada. FAST/QUALITY menyusul di fase berikutnya.">
+                        <option value="auto" selected>AUTO — pipeline default</option>
+                        <option value="fast" disabled>FAST — coming soon</option>
+                        <option value="quality" disabled>QUALITY — coming soon</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="source-info" id="sourceInfoCard" hidden aria-label="Source information">
+                    <p class="field-label">SOURCE</p>
+                    <div class="si-grid">
+                      <span class="si-key">File</span><strong class="si-val" id="siName">&mdash;</strong>
+                      <span class="si-key">Duration</span><strong class="si-val" id="siDuration">&mdash;</strong>
+                      <span class="si-key">Resolution</span><strong class="si-val" id="siRes">&mdash;</strong>
+                      <span class="si-key">FPS</span><strong class="si-val" id="siFps">&mdash;</strong>
+                      <span class="si-key">Audio</span><strong class="si-val" id="siAudio">&mdash;</strong>
+                    </div>
+                  </div>
+                  <div class="engine-readiness" id="engineReadiness">
+                    <p class="field-label">ENGINE READINESS</p>
+                    <div class="er-row"><span class="er-name">CPU</span><span class="er-state" id="erCpu" data-state="unknown">&mdash; UNKNOWN</span></div>
+                    <div class="er-row"><span class="er-name">GPU</span><span class="er-state" id="erGpu" data-state="unknown">&mdash; UNKNOWN</span></div>
+                    <div class="er-row"><span class="er-name">FFMPEG</span><span class="er-state" id="erFfmpeg" data-state="unknown">&mdash; UNKNOWN</span></div>
+                    <div class="er-row"><span class="er-name">SPEECH-TO-TEXT</span><span class="er-state" id="erStt" data-state="unknown">&mdash; UNKNOWN</span></div>
+                    <div class="er-row"><span class="er-name">LOCAL AI</span><span class="er-state" id="erAi" data-state="unknown">&mdash; UNKNOWN</span></div>
+                    <div class="er-row"><span class="er-name">HOOK ENGINE</span><span class="er-state" id="erHook" data-state="unknown">&mdash; UNKNOWN</span></div>
+                    <div class="er-row"><span class="er-name">CAPTION ENGINE</span><span class="er-state" id="erCaption" data-state="unknown">&mdash; UNKNOWN</span></div>
+                    <p class="er-summary" id="erSummary">CHECKING&hellip;</p>
+                  </div>
+                  <div class="url-row">
+                    <textarea id="videoUrl" rows="2" placeholder="Paste 1 atau lebih URL YouTube&#10;satu URL per baris (max 10)"></textarea>
+                    <button class="primary-button" id="attachUrl" type="button">Analyze</button>
+                  </div>
+                  <div class="process-steps" id="processSteps">
+                    <span data-step="metadata">Metadata</span>
+                    <span data-step="clips">Clips</span>
+                    <span data-step="preview">Preview</span>
+                    <span data-step="export">Export</span>
+                  </div>
+                  <div class="settings-grid">
+                    <label>Hook strategy
+                      <select id="hookStrategySelect" title="Preferensi jenis hook untuk ranking kandidat (AI = seimbang otomatis)">
+                        <option value="balanced" selected>Balanced / AI</option>
+                        <option value="curiosity">Curiosity</option>
+                        <option value="story">Story</option>
+                        <option value="educational">Educational</option>
+                        <option value="direct">Direct Value</option>
+                        <option value="controversy">Controversy</option>
+                      </select>
+                    </label>
+                    <input class="inspector-input" id="focusInput" type="text" maxlength="120" placeholder="Content focus (optional) — e.g. business growth">
+                  </div>
+                  <details class="accordion-section" open>
+                    <summary class="accordion-header"><h3>Generation Mode</h3><span class="accordion-icon">&#9660;</span></summary>
+                    <div class="accordion-body">
+                      <div class="segmented" id="genModeSegmented">
+                        <button class="active" data-genmode="ai" type="button" title="AI determines optimal clip configuration">AI Recommended</button>
+                        <button data-genmode="hybrid" type="button" title="You set constraints, AI determines boundaries">Hybrid</button>
+                        <button data-genmode="manual" type="button" title="Duration locked exactly to your value">Manual</button>
+                      </div>
+                      <div class="settings-grid" style="margin-top:10px">
+                        <label id="maxCeilingLabel">Max clip duration (sec)
+                          <input class="inspector-input" id="maxCeilingInput" type="number" min="15" max="180" step="5" value="90" title="Hard ceiling — AI may produce shorter clips when natural ending is found">
+                        </label>
+                        <label>Number of clips
+                          <select id="maxClipsSelect" title="Final clip count after ranking">
+                            <option value="4">4</option>
+                            <option value="6" selected>6</option>
+                            <option value="8">8</option>
+                            <option value="10">10</option>
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+                  </details>
+                  <details class="accordion-section" open>
+                    <summary class="accordion-header"><h3>Auto Caption</h3><span class="accordion-icon">&#9660;</span></summary>
+                    <div class="accordion-body">
+                      <div class="cap-config-grid" id="createCapConfig">
+                        <span class="cap-slot" id="slotAutoCaption"></span>
+                        <span class="cap-slot" id="slotFiller"></span>
+                      </div>
+                      <div class="proc-actions" style="gap:8px; margin-top:6px">
+                        <button class="secondary-button compact" id="templateGalleryBtn" type="button" title="44 real caption templates with preview">Caption Template Library</button>
+                        <button class="ghost-button compact" id="createTranslateBtn" type="button" title="Translate caption segments offline (Indonesia ↔ English)">Translate Caption</button>
+                        <span class="caption-status" id="createTplName"></span>
+                      </div>
+                    </div>
+                  </details>
+                  <button class="wide-button primary-button" id="generateButton" type="button" disabled style="margin-top:8px">Generate clips</button>
                 </div>
-                <div class="speaker-track" id="speakerTrack" style="display:none; height: 6px; position: relative; border-radius: 4px; background: var(--line);">
-                  <!-- Speaker segments will be injected here -->
+      </section>
+      <section class="ws-stage" data-ws-panel="editor" id="wsStageEditor" aria-label="Editor">
+            <div class="studio-grid">
+              <div class="studio-left">
+                <!-- Upload Panel -->
+        
+              <!-- Clips Panel -->
+              <div class="clips-panel panel">
+                <div class="panel-heading">
+                  <h2>Clips</h2>
+                  <div>
+                    <button class="ghost-button compact" id="undoBtn" type="button" title="Undo (Ctrl+Z)">Undo</button>
+                    <button class="ghost-button compact" id="redoBtn" type="button" title="Redo (Ctrl+Y)">Redo</button>
+                    <button class="ghost-button compact" id="rerankBtn" type="button" title="Ubah ranking tanpa STT ulang — pakai cache transkrip">Re-rank</button>
+                    <button class="ghost-button compact" id="sortClips" type="button">Sort by score</button>
+                    <button class="ghost-button compact" id="selectAllClips" type="button">Select all</button>
+                    <button class="primary-button compact" id="exportAllBtn" type="button">Export all</button>
+                    <button class="secondary-button compact" id="exportCombinedBtn" type="button">Gabung jadi 1</button>
+                  </div>
+                </div>
+                <div class="clip-list" id="clipList"></div>
+              </div>
+              </div>
+        
+              <!-- Preview Panel -->
+              <div class="preview-panel panel">
+                <div class="panel-heading">
+                  <h2 id="previewTitle">Clip 01 - Select a clip</h2>
+                  <div class="segmented">
+                    <button class="active" data-ratio="portrait" type="button">9:16</button>
+                    <button data-ratio="square" type="button">1:1</button>
+                    <button data-ratio="wide" type="button">16:9</button>
+                    <button data-ratio="four5" type="button">4:5</button>
+                  </div>
+                </div>
+                <div class="video-stage">
+                  <div class="phone-frame portrait" id="previewFrame">
+                    <video class="preview-video" id="previewVideo" playsinline></video>
+                    <div class="cut-to-face-badge" id="cutToFacePreviewBadge" aria-live="polite"></div>
+                    <div class="caption-box" id="captionBox" style="display:none"></div>
+                    <div class="live-caption" id="liveCaption"></div>
+                  </div>
+                </div>
+                  <div class="timeline">
+                    <span id="clipTime" class="tl-label">00:00 - 00:00</span>
+                    <div class="timeline-tracks-container" style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                      <div class="timeline-track" id="progressTrack">
+                        <span id="progressBar" class="progress-fill" style="width:0%"></span>
+                        <span id="trimHandleStart" class="trim-handle trim-handle-start" title="Seret untuk ubah awal clip"></span>
+                        <span id="trimHandleEnd" class="trim-handle trim-handle-end" title="Seret untuk ubah akhir clip"></span>
+                      </div>
+                      <div class="speaker-track" id="speakerTrack" style="display:none; height: 6px; position: relative; border-radius: 4px; background: var(--line);">
+                        <!-- Speaker segments will be injected here -->
+                      </div>
+                    </div>
+                    <span id="progressText" class="tl-label tl-status">Ready</span>
+                  </div>
+                <div class="final-preview-strip" id="finalPreviewStrip" aria-label="Final render configuration">
+                  <span>FORMAT <strong id="fpFormat">9:16</strong></span>
+                  <span>CAPTIONS <strong id="fpCaptions">&mdash;</strong></span>
+                  <span>DURATION <strong id="fpDuration">00:00</strong></span>
+                </div>
+                <div class="transport-row">
+                  <span id="clipRange">00:00 - 00:90</span>
+                  <div class="transport-controls">
+                    <label class="trim-label">Trim <input class="trim-input" id="trimStart" type="text" inputmode="numeric" placeholder="00:00"></label>
+                    <span class="trim-dash">–</span>
+                    <input class="trim-input" id="trimEnd" type="text" inputmode="numeric" placeholder="00:30">
+                    <button class="ghost-button compact" id="applyTrim" type="button">Apply</button>
+                    <button class="secondary-button compact" id="playClip" type="button">Play clip</button>
+                                  <button class="primary-button compact" id="autoCaptionBtn" type="button">Auto Caption</button>
+                    <label class="audio-opt" style="margin-bottom:0; display:flex; align-items:center; gap:5px; font-size:12px; white-space:nowrap" title="Matikan auto caption total: export tanpa teks terbakar, preview & generate caption nonaktif">
+                      <input type="checkbox" id="autoCaptionToggle" checked> Auto caption
+                    </label>
+                    <select id="fillerModeSelect" class="inspector-input" style="max-width:130px" title="Mode filter kata pengisi (filler)">
+                      <option value="aggressive" selected>Filler: Aggressive</option>
+                      <option value="light">Filler: Light</option>
+                      <option value="none">Filler: None (simpan semua)</option>
+                    </select>
+                    <label class="audio-opt" style="margin-bottom:0; display:flex; align-items:center; gap:5px; font-size:12px; white-space:nowrap" title="AI menganalisis caption & memberi saran QA (butuh provider cloud terhubung; timing tetap lokal)">
+                      <input type="checkbox" id="aiCaptionQA"> AI Caption QA
+                    </label>
+                    <span id="captionStatus" class="caption-status"></span>
+                    <button class="primary-button compact" id="exportButton" type="button">Export selected clip</button>
+                  </div>
                 </div>
               </div>
-              <span id="progressText" class="tl-label tl-status">Ready</span>
-            </div>
-          <div class="final-preview-strip" id="finalPreviewStrip" aria-label="Final render configuration">
-            <span>FORMAT <strong id="fpFormat">9:16</strong></span>
-            <span>CAPTIONS <strong id="fpCaptions">&mdash;</strong></span>
-            <span>DURATION <strong id="fpDuration">00:00</strong></span>
-          </div>
-          <div class="transport-row">
-            <span id="clipRange">00:00 - 00:90</span>
-            <div class="transport-controls">
-              <label class="trim-label">Trim <input class="trim-input" id="trimStart" type="text" inputmode="numeric" placeholder="00:00"></label>
-              <span class="trim-dash">–</span>
-              <input class="trim-input" id="trimEnd" type="text" inputmode="numeric" placeholder="00:30">
-              <button class="ghost-button compact" id="applyTrim" type="button">Apply</button>
-              <button class="secondary-button compact" id="playClip" type="button">Play clip</button>
-                            <button class="primary-button compact" id="autoCaptionBtn" type="button">Auto Caption</button>
-              <label class="audio-opt" style="margin-bottom:0; display:flex; align-items:center; gap:5px; font-size:12px; white-space:nowrap" title="Matikan auto caption total: export tanpa teks terbakar, preview & generate caption nonaktif">
-                <input type="checkbox" id="autoCaptionToggle" checked> Auto caption
-              </label>
-              <select id="fillerModeSelect" class="inspector-input" style="max-width:130px" title="Mode filter kata pengisi (filler)">
-                <option value="aggressive" selected>Filler: Aggressive</option>
-                <option value="light">Filler: Light</option>
-                <option value="none">Filler: None (simpan semua)</option>
-              </select>
-              <label class="audio-opt" style="margin-bottom:0; display:flex; align-items:center; gap:5px; font-size:12px; white-space:nowrap" title="AI menganalisis caption & memberi saran QA (butuh provider cloud terhubung; timing tetap lokal)">
-                <input type="checkbox" id="aiCaptionQA"> AI Caption QA
-              </label>
-              <span id="captionStatus" class="caption-status"></span>
-              <button class="primary-button compact" id="exportButton" type="button">Export selected clip</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Inspector Panel -->
-        <div class="inspector-panel panel">
-          <div class="tabs">
-            <button class="active" data-tab="clip" type="button">Clip</button>
-            <button data-tab="intel" type="button">Intel</button>
-            <button data-tab="settings" type="button">Settings</button>
-          </div>
-          <div class="tab-panel active" id="clipTab">
-            <div class="suggest-strip" id="suggestStrip" aria-live="polite"><span class="ss-label">AI SUGGESTIONS</span></div>
-            <div class="clip-info">
-              <span class="clip-info-label">Score</span>
-              <span class="clip-info-value" id="clipScore">--</span>
-              <span class="clip-info-label">Duration</span>
-              <span class="clip-info-value" id="clipDuration">--</span>
-            </div>
-            <div class="field-label">Hook</div>
-            <input class="inspector-input" id="hookInput" type="text" placeholder="Hook text">
-            <div class="field-label">Caption</div>
-            <input class="inspector-input" id="captionInput" type="text" placeholder="Caption text">
-          </div>
-          <div class="tab-panel" id="intelTab">
-            <div class="intel-actions">
-              <button class="primary-button compact" id="analyzeIntelBtn" type="button">Analyze clip</button>
-              <button class="ghost-button compact" id="intelRegenerate" type="button">Regenerate</button>
-              <span class="caption-status" id="intelStatus"></span>
-            </div>
-            <div class="intel-controls">
-              <label class="audio-opt" style="margin-bottom:6px">
-                <input type="checkbox" id="keepOriginalToggle"> Keep original speech
-              </label>
-              <label class="audio-opt" style="margin-bottom:6px">
-                <input type="checkbox" id="disableRewriteToggle"> Disable rewrite
-              </label>
-            </div>
-            <div class="intel-meta" id="intelMeta">
-              <div class="clip-info">
-                <span class="clip-info-label">Score</span>
-                <span class="clip-info-value" id="intelScore">--</span>
-                <span class="clip-info-label">Confidence</span>
-                <span class="clip-info-value" id="intelConfidence">--</span>
-                <span class="clip-info-label">Hook</span>
-                <span class="clip-info-value" id="intelHookType">--</span>
+        
+              <!-- Inspector Panel -->
+              <div class="inspector-panel panel">
+                <div class="tabs">
+                  <button class="active" data-tab="clip" type="button">Clip</button>
+                  <button data-tab="intel" type="button">Intel</button>
+                  <button data-tab="settings" type="button">Settings</button>
+                </div>
+                <div class="tab-panel active" id="clipTab">
+                  <div class="suggest-strip" id="suggestStrip" aria-live="polite"><span class="ss-label">AI SUGGESTIONS</span></div>
+                  <div class="clip-info">
+                    <span class="clip-info-label">Score</span>
+                    <span class="clip-info-value" id="clipScore">--</span>
+                    <span class="clip-info-label">Duration</span>
+                    <span class="clip-info-value" id="clipDuration">--</span>
+                  </div>
+                  <div class="field-label">Hook</div>
+                  <input class="inspector-input" id="hookInput" type="text" placeholder="Hook text">
+                  <div class="field-label">Caption</div>
+                  <input class="inspector-input" id="captionInput" type="text" placeholder="Caption text">
+                </div>
+                <div class="tab-panel" id="intelTab">
+                  <div class="intel-actions">
+                    <button class="primary-button compact" id="analyzeIntelBtn" type="button">Analyze clip</button>
+                    <button class="ghost-button compact" id="intelRegenerate" type="button">Regenerate</button>
+                    <span class="caption-status" id="intelStatus"></span>
+                  </div>
+                  <div class="intel-controls">
+                    <label class="audio-opt" style="margin-bottom:6px">
+                      <input type="checkbox" id="keepOriginalToggle"> Keep original speech
+                    </label>
+                    <label class="audio-opt" style="margin-bottom:6px">
+                      <input type="checkbox" id="disableRewriteToggle"> Disable rewrite
+                    </label>
+                  </div>
+                  <div class="intel-meta" id="intelMeta">
+                    <div class="clip-info">
+                      <span class="clip-info-label">Score</span>
+                      <span class="clip-info-value" id="intelScore">--</span>
+                      <span class="clip-info-label">Confidence</span>
+                      <span class="clip-info-value" id="intelConfidence">--</span>
+                      <span class="clip-info-label">Hook</span>
+                      <span class="clip-info-value" id="intelHookType">--</span>
+                    </div>
+                    <label class="field-label">Best opening</label>
+                    <div class="intel-block intel-block--opening" id="intelBestOpening">--</div>
+                    <div class="intel-opening-meta" id="intelOpeningMeta"></div>
+                    <label class="field-label">Viral clip length</label>
+                    <div class="intel-block intel-block--duration" id="intelDuration">
+                      <span class="intel-dur-main">--</span>
+                      <span class="intel-dur-sub" id="intelDurationSub"></span>
+                    </div>
+                    <div class="intel-duration-meta">
+                      <span class="intel-dur-tag" id="intelDurRecommended">--</span>
+                      <span class="intel-dur-tag" id="intelDurRange">--</span>
+                      <span class="intel-dur-tag" id="intelDurMax">--</span>
+                      <span class="intel-dur-tag" id="intelDurMode">--</span>
+                    </div>
+                    <div class="intel-opening-reason" id="intelCutReason"></div>
+                    <label class="field-label">Original hook</label>
+                    <div class="intel-block" id="intelOriginalHook">--</div>
+                    <label class="field-label">Recommended hook</label>
+                    <div class="intel-block" id="intelRecommendedHook">--</div>
+                    <div class="intel-badges" id="intelHookBadges"></div>
+                    <label class="field-label">Deep AI — Judul rekomendasi</label>
+                    <div class="intel-block intel-block--title" id="intelDeepTitle">--</div>
+                    <div class="intel-badges" id="intelDeepTitleMeta"></div>
+                    <div class="intel-opening-reason" id="intelDeepTitleReason"></div>
+                    <button class="ghost-button compact" id="intelUseTitle" type="button">Gunakan judul</button>
+                    <button class="ghost-button compact" id="intelUseDeepHook" type="button">Gunakan deep hook</button>
+                    <label class="field-label">Deep hook</label>
+                    <div class="intel-block" id="intelDeepHook">--</div>
+                    <div class="intel-opening-reason" id="intelDeepHookReason"></div>
+                    <label class="field-label">Judul alternatif</label>
+                    <div class="intel-block" id="intelDeepAlternatives">--</div>
+                    <details class="intel-advanced" id="intelDeepDetails">
+                      <summary>Deep thinking — alasan sintesis</summary>
+                      <div class="intel-dims" id="intelDeepThinking">--</div>
+                    </details>
+                    <label class="field-label">Editorial verdict</label>
+                    <div class="intel-block" id="intelExplanation">--</div>
+                    <label class="field-label">Hook alternatives</label>
+                    <div class="intel-block" id="intelAlternatives">--</div>
+                    <details class="intel-advanced" id="intelAdvanced">
+                      <summary>Advanced hook scoring</summary>
+                      <div class="intel-dims" id="intelDimensions">--</div>
+                    </details>
+                    <label class="field-label">Key message</label>
+                    <div class="intel-block" id="intelKeyMessage">--</div>
+                    <label class="field-label">Payoff</label>
+                    <div class="intel-block" id="intelPayoff">--</div>
+                    <label class="field-label">Story structure</label>
+                    <div class="intel-block" id="intelStory">--</div>
+                    <label class="field-label">Context warning</label>
+                    <div class="intel-block" id="intelContext">--</div>
+                    <label class="field-label">Best quote</label>
+                    <div class="intel-block" id="intelQuote">--</div>
+                    <button class="ghost-button compact" id="intelApplyHook" type="button">Gunakan recommended hook</button>
+                    <button class="ghost-button compact" id="intelApplyCaption" type="button">Gunakan caption terbaik</button>
+                  </div>
+                  <label class="field-label">Caption A - Curiosity</label>
+                  <div class="intel-block" id="intelCaptionA">--</div>
+                  <label class="field-label">Caption B - Emotional/Relatable</label>
+                  <div class="intel-block" id="intelCaptionB">--</div>
+                  <label class="field-label">Caption C - Discussion</label>
+                  <div class="intel-block" id="intelCaptionC">--</div>
+                  <div class="intel-meta">
+                    <label class="field-label">CTA</label>
+                    <div class="intel-block" id="intelCta">--</div>
+                    <label class="field-label">Discussion question</label>
+                    <div class="intel-block" id="intelQuestion">--</div>
+                    <label class="field-label">Hashtags</label>
+                    <div class="intel-block" id="intelHashtags">--</div>
+                    <label class="field-label">Quality gate</label>
+                    <div class="intel-block" id="intelQuality">--</div>
+                  </div>
+                </div>
+                <div class="tab-panel" id="settingsTab">
+                  <div class="ai-engine-panel">
+                    <div class="field-label">AI Engine</div>
+                    <label class="audio-opt" style="margin-bottom:6px">
+                      <input type="checkbox" id="speakerCutToggle"> Speaker Cut (auto-zoom ke speaker aktif)
+                    </label>
+                    <label class="audio-opt" style="margin-bottom:6px">
+                      <input type="checkbox" id="faceTrackToggle" checked> Face tracking (butuh OpenCV / MediaPipe)
+                    </label>
+                    <div class="ai-status-rows">
+                      <div class="ai-status-row"><span>Speaker</span><span id="localaiSpeaker" class="ai-status-val">—</span></div>
+                      <div class="ai-status-row"><span>Face</span><span id="localaiFace" class="ai-status-val">—</span></div>
+                      <div class="ai-status-row"><span>Runtime</span><span id="localaiRuntime" class="ai-status-val">AUTO</span></div>
+                      <div class="ai-status-row"><span>Backend</span><span id="localaiBackend" class="ai-status-val">CPU</span></div>
+                    </div>
+                    <div class="template-actions" style="margin-top:8px;">
+                      <button class="ghost-button compact" id="analyzeSpeakerBtn" type="button">Analyze Speaker Cut</button>
+                      <button class="ghost-button compact" id="downloadModelBtn" type="button">Download Models</button>
+                    </div>
+                    <div id="speakerTimelineMeta" class="caption-hint">Speaker timeline metadata akan muncul di sini.</div>
+                  </div>
+                  <div class="field-label">Caption size</div>
+                  <input type="range" id="captionSize" min="14" max="40" value="23" style="width:100%">
+                  <div class="field-label">Caption position</div>
+                  <input type="range" id="captionPosition" min="30" max="95" value="76" style="width:100%">
+                  <div class="pos-presets">
+                    <button class="ghost-button compact" type="button" data-cpos="35">TOP</button>
+                    <button class="ghost-button compact" type="button" data-cpos="65">CENTER</button>
+                    <button class="ghost-button compact" type="button" data-cpos="88">BOTTOM</button>
+                  </div>
+                  <div class="field-label">Caption style</div>
+                  <select id="captionStyleSelect" class="inspector-input">
+                    <option value="karaoke">Karaoke (CapCut)</option>
+                    <option value="bold">Bold</option>
+                    <option value="minimal">Minimal</option>
+                    <option value="pop">Pop</option>
+                    <option value="glow">Glow</option>
+                    <option value="off">Off</option>
+                  </select>
+                  <div class="field-label">Font</div>
+                  <select id="captionFontSelect" class="inspector-input">
+                    <option value="Arial" style="font-family: Arial, sans-serif">Arial</option>
+                    <option value="Arial Black" style="font-family: 'Arial Black', Arial, sans-serif">Arial Black</option>
+                    <option value="Calibri" style="font-family: Calibri, sans-serif">Calibri</option>
+                    <option value="Cambria" style="font-family: Cambria, Georgia, serif">Cambria</option>
+                    <option value="Comic Sans MS" style="font-family: 'Comic Sans MS', 'Comic Sans', cursive">Comic Sans MS</option>
+                    <option value="Consolas" style="font-family: Consolas, monospace">Consolas</option>
+                    <option value="Courier New" style="font-family: 'Courier New', monospace">Courier New</option>
+                    <option value="Franklin Gothic Medium" style="font-family: 'Franklin Gothic Medium', 'Franklin Gothic', sans-serif">Franklin Gothic Medium</option>
+                    <option value="Georgia" style="font-family: Georgia, serif">Georgia</option>
+                    <option value="Impact" style="font-family: Impact, 'Arial Black', sans-serif">Impact</option>
+                    <option value="Segoe UI" style="font-family: 'Segoe UI', sans-serif">Segoe UI</option>
+                    <option value="Segoe UI Black" style="font-family: 'Segoe UI Black', 'Segoe UI', sans-serif">Segoe UI Black</option>
+                    <option value="Tahoma" style="font-family: Tahoma, sans-serif">Tahoma</option>
+                    <option value="Times New Roman" style="font-family: 'Times New Roman', Times, serif">Times New Roman</option>
+                    <option value="Trebuchet MS" style="font-family: 'Trebuchet MS', sans-serif">Trebuchet MS</option>
+                    <option value="Verdana" style="font-family: Verdana, sans-serif">Verdana</option>
+                  </select>
+                  <div class="field-label">Warna font</div>
+                  <input type="color" id="captionColor" value="#FFFFFF" style="width:100%; height:34px; padding:2px; border:1px solid var(--line); border-radius:8px; background:transparent; cursor:pointer">
+                  <div class="field-label">Model STT (offline)</div>
+                  <select id="sttModelSelect" class="inspector-input">
+                    <option value="">Auto (default)</option>
+                  </select>
+                  <div class="caption-hint">Model untuk transkripsi offline. Pilihan dimuat dari server (daftar model Faster-Whisper).</div>
+                </div>
               </div>
-              <label class="field-label">Best opening</label>
-              <div class="intel-block intel-block--opening" id="intelBestOpening">--</div>
-              <div class="intel-opening-meta" id="intelOpeningMeta"></div>
-              <label class="field-label">Viral clip length</label>
-              <div class="intel-block intel-block--duration" id="intelDuration">
-                <span class="intel-dur-main">--</span>
-                <span class="intel-dur-sub" id="intelDurationSub"></span>
-              </div>
-              <div class="intel-duration-meta">
-                <span class="intel-dur-tag" id="intelDurRecommended">--</span>
-                <span class="intel-dur-tag" id="intelDurRange">--</span>
-                <span class="intel-dur-tag" id="intelDurMax">--</span>
-                <span class="intel-dur-tag" id="intelDurMode">--</span>
-              </div>
-              <div class="intel-opening-reason" id="intelCutReason"></div>
-              <label class="field-label">Original hook</label>
-              <div class="intel-block" id="intelOriginalHook">--</div>
-              <label class="field-label">Recommended hook</label>
-              <div class="intel-block" id="intelRecommendedHook">--</div>
-              <div class="intel-badges" id="intelHookBadges"></div>
-              <label class="field-label">Deep AI — Judul rekomendasi</label>
-              <div class="intel-block intel-block--title" id="intelDeepTitle">--</div>
-              <div class="intel-badges" id="intelDeepTitleMeta"></div>
-              <div class="intel-opening-reason" id="intelDeepTitleReason"></div>
-              <button class="ghost-button compact" id="intelUseTitle" type="button">Gunakan judul</button>
-              <button class="ghost-button compact" id="intelUseDeepHook" type="button">Gunakan deep hook</button>
-              <label class="field-label">Deep hook</label>
-              <div class="intel-block" id="intelDeepHook">--</div>
-              <div class="intel-opening-reason" id="intelDeepHookReason"></div>
-              <label class="field-label">Judul alternatif</label>
-              <div class="intel-block" id="intelDeepAlternatives">--</div>
-              <details class="intel-advanced" id="intelDeepDetails">
-                <summary>Deep thinking — alasan sintesis</summary>
-                <div class="intel-dims" id="intelDeepThinking">--</div>
-              </details>
-              <label class="field-label">Editorial verdict</label>
-              <div class="intel-block" id="intelExplanation">--</div>
-              <label class="field-label">Hook alternatives</label>
-              <div class="intel-block" id="intelAlternatives">--</div>
-              <details class="intel-advanced" id="intelAdvanced">
-                <summary>Advanced hook scoring</summary>
-                <div class="intel-dims" id="intelDimensions">--</div>
-              </details>
-              <label class="field-label">Key message</label>
-              <div class="intel-block" id="intelKeyMessage">--</div>
-              <label class="field-label">Payoff</label>
-              <div class="intel-block" id="intelPayoff">--</div>
-              <label class="field-label">Story structure</label>
-              <div class="intel-block" id="intelStory">--</div>
-              <label class="field-label">Context warning</label>
-              <div class="intel-block" id="intelContext">--</div>
-              <label class="field-label">Best quote</label>
-              <div class="intel-block" id="intelQuote">--</div>
-              <button class="ghost-button compact" id="intelApplyHook" type="button">Gunakan recommended hook</button>
-              <button class="ghost-button compact" id="intelApplyCaption" type="button">Gunakan caption terbaik</button>
             </div>
-            <label class="field-label">Caption A - Curiosity</label>
-            <div class="intel-block" id="intelCaptionA">--</div>
-            <label class="field-label">Caption B - Emotional/Relatable</label>
-            <div class="intel-block" id="intelCaptionB">--</div>
-            <label class="field-label">Caption C - Discussion</label>
-            <div class="intel-block" id="intelCaptionC">--</div>
-            <div class="intel-meta">
-              <label class="field-label">CTA</label>
-              <div class="intel-block" id="intelCta">--</div>
-              <label class="field-label">Discussion question</label>
-              <div class="intel-block" id="intelQuestion">--</div>
-              <label class="field-label">Hashtags</label>
-              <div class="intel-block" id="intelHashtags">--</div>
-              <label class="field-label">Quality gate</label>
-              <div class="intel-block" id="intelQuality">--</div>
+      </section>
+      <section class="ws-stage" data-ws-panel="captions" id="wsStageCaptions" aria-label="Captions">
+            <div class="captions-grid">
+              <section class="panel cap-lib-panel">
+                <div class="panel-heading"><h2>TEMPLATES</h2><span class="status-pill status-pill-running" id="capLibCount">0</span></div>
+                <input class="inspector-input" id="capLibSearch" type="text" maxlength="60" placeholder="Cari template&hellip;">
+                <div class="tpl-grid tpl-grid-flat" id="capLibList"></div>
+              </section>
+              <section class="panel cap-preview-panel">
+                <div class="panel-heading"><h2>CAPTION PLAY PREVIEW</h2><span class="status-pill" id="capPreviewName">&mdash;</span></div>
+                <div class="cap-stage">
+                  <div class="cap-frame">
+                    <video id="capPreviewVideo" playsinline preload="metadata"></video>
+                    <div class="cap-lines" id="capPreviewLines"></div>
+                  </div>
+                  <div class="cap-controls">
+                    <button class="primary-button compact" id="capPlayBtn" type="button">&#9654; PLAY CAPTIONS</button>
+                    <div class="cap-playbar" id="capPlayBar" title="Klik untuk seek"><span id="capPlayFill"></span></div>
+                    <span class="tl-label" id="capPlayTime">0.0s</span>
+                  </div>
+                  <p class="caption-hint">Memutar caption dengan timing kata ASLI dari transkrip + konfigurasi template aktif (identik dengan renderer FFmpeg). Video tampil bila project punya sumber lokal.</p>
+                </div>
+              </section>
+              <section class="panel cap-props-panel">
+                <div class="panel-heading"><h2>PROPERTIES</h2></div>
+                <dl class="ri-grid" id="capProps"></dl>
+              </section>
             </div>
-          </div>
-          <div class="tab-panel" id="settingsTab">
-            <div class="ai-engine-panel">
-              <div class="field-label">AI Engine</div>
-              <label class="audio-opt" style="margin-bottom:6px">
-                <input type="checkbox" id="speakerCutToggle"> Speaker Cut (auto-zoom ke speaker aktif)
-              </label>
-              <label class="audio-opt" style="margin-bottom:6px">
-                <input type="checkbox" id="faceTrackToggle" checked> Face tracking (butuh OpenCV / MediaPipe)
-              </label>
-              <div class="ai-status-rows">
-                <div class="ai-status-row"><span>Speaker</span><span id="localaiSpeaker" class="ai-status-val">—</span></div>
-                <div class="ai-status-row"><span>Face</span><span id="localaiFace" class="ai-status-val">—</span></div>
-                <div class="ai-status-row"><span>Runtime</span><span id="localaiRuntime" class="ai-status-val">AUTO</span></div>
-                <div class="ai-status-row"><span>Backend</span><span id="localaiBackend" class="ai-status-val">CPU</span></div>
+            <div id="capTimelineMount">
+              <div class="caption-timeline-panel panel" id="captionTimelinePanel" style="display:none">
+                <div class="panel-heading">
+                  <h2>Caption Timeline</h2>
+                  <div class="caption-tl-actions">
+                    <button class="ghost-button compact" id="refreshTimeline" type="button">Refresh</button>
+                    <button class="ghost-button compact" id="importSrtBtn" type="button">Import SRT/VTT</button>
+                    <input type="file" id="importSrtInput" accept=".srt,.vtt,text/plain" style="display:none">
+                    <button class="ghost-button compact" id="exportSrt" type="button">Export SRT</button>
+                    <select class="inspector-input" id="translateFrom" style="max-width:110px" title="Bahasa asli caption">
+                      <option value="auto">Auto deteksi</option>
+                      <option value="en">English</option>
+                      <option value="id">Indonesia</option>
+                      <option value="ms">Melayu</option>
+                    </select>
+                    <button class="ghost-button compact" id="translateBtn" type="button" title="Terjemahkan semua segmen caption ke bahasa pilihan di inspector (offline)">Terjemahkan</button>
+                    <button class="primary-button compact" id="saveTimeline" type="button">Simpan Perubahan</button>
+                  </div>
+                </div>
+                <div class="caption-track-wrap">
+                  <div class="caption-tl-scroll" id="captionTlScroll">
+                    <div class="caption-tl-inner" id="captionTlInner">
+                      <div class="caption-ruler" id="captionRuler"></div>
+                      <div class="caption-track" id="captionTrack">
+                        <div class="caption-playhead" id="captionPlayhead"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="caption-tl-zoom">
+                    <span class="caption-tl-zoom-hint">Scroll = geser timeline &middot; Ctrl+Scroll = zoom &middot; Space = play/pause</span>
+                    <span class="caption-tl-zoom-value" id="captionZoomValue">100%</span>
+                  </div>
+                </div>
+                <div class="caption-edit-row">
+                  <div class="caption-edit-time">
+                    <span id="captionEditIndex">--</span>
+                    <span id="captionEditTime">00:00 - 00:00</span>
+                  </div>
+                  <input class="caption-edit-input" id="captionEditInput" type="text" placeholder="Teks caption (klik blok di timeline untuk edit)">
+                </div>
+                <div class="caption-search-row">
+                  <input class="caption-search-input" id="captionSearchInput" type="search" placeholder="Cari kata di caption...">
+                  <span class="caption-search-count" id="captionSearchCount"></span>
+                </div>
+                <div class="caption-hint">Klik blok pada timeline untuk memilih &amp; mengedit teks caption. Simpan Perubahan agar dipakai saat export. Gunakan tombol play/space untuk preview.</div>
               </div>
-              <div class="template-actions" style="margin-top:8px;">
-                <button class="ghost-button compact" id="analyzeSpeakerBtn" type="button">Analyze Speaker Cut</button>
-                <button class="ghost-button compact" id="downloadModelBtn" type="button">Download Models</button>
-              </div>
-              <div id="speakerTimelineMeta" class="caption-hint">Speaker timeline metadata akan muncul di sini.</div>
             </div>
-            <div class="field-label">Caption size</div>
-            <input type="range" id="captionSize" min="14" max="40" value="23" style="width:100%">
-            <div class="field-label">Caption position</div>
-            <input type="range" id="captionPosition" min="30" max="95" value="76" style="width:100%">
-            <div class="pos-presets">
-              <button class="ghost-button compact" type="button" data-cpos="35">TOP</button>
-              <button class="ghost-button compact" type="button" data-cpos="65">CENTER</button>
-              <button class="ghost-button compact" type="button" data-cpos="88">BOTTOM</button>
-            </div>
-            <div class="field-label">Caption style</div>
-            <select id="captionStyleSelect" class="inspector-input">
-              <option value="karaoke">Karaoke (CapCut)</option>
-              <option value="bold">Bold</option>
-              <option value="minimal">Minimal</option>
-              <option value="pop">Pop</option>
-              <option value="glow">Glow</option>
-              <option value="off">Off</option>
-            </select>
-            <div class="field-label">Font</div>
-            <select id="captionFontSelect" class="inspector-input">
-              <option value="Arial" style="font-family: Arial, sans-serif">Arial</option>
-              <option value="Arial Black" style="font-family: 'Arial Black', Arial, sans-serif">Arial Black</option>
-              <option value="Calibri" style="font-family: Calibri, sans-serif">Calibri</option>
-              <option value="Cambria" style="font-family: Cambria, Georgia, serif">Cambria</option>
-              <option value="Comic Sans MS" style="font-family: 'Comic Sans MS', 'Comic Sans', cursive">Comic Sans MS</option>
-              <option value="Consolas" style="font-family: Consolas, monospace">Consolas</option>
-              <option value="Courier New" style="font-family: 'Courier New', monospace">Courier New</option>
-              <option value="Franklin Gothic Medium" style="font-family: 'Franklin Gothic Medium', 'Franklin Gothic', sans-serif">Franklin Gothic Medium</option>
-              <option value="Georgia" style="font-family: Georgia, serif">Georgia</option>
-              <option value="Impact" style="font-family: Impact, 'Arial Black', sans-serif">Impact</option>
-              <option value="Segoe UI" style="font-family: 'Segoe UI', sans-serif">Segoe UI</option>
-              <option value="Segoe UI Black" style="font-family: 'Segoe UI Black', 'Segoe UI', sans-serif">Segoe UI Black</option>
-              <option value="Tahoma" style="font-family: Tahoma, sans-serif">Tahoma</option>
-              <option value="Times New Roman" style="font-family: 'Times New Roman', Times, serif">Times New Roman</option>
-              <option value="Trebuchet MS" style="font-family: 'Trebuchet MS', sans-serif">Trebuchet MS</option>
-              <option value="Verdana" style="font-family: Verdana, sans-serif">Verdana</option>
-            </select>
-            <div class="field-label">Warna font</div>
-            <input type="color" id="captionColor" value="#FFFFFF" style="width:100%; height:34px; padding:2px; border:1px solid var(--line); border-radius:8px; background:transparent; cursor:pointer">
-            <div class="field-label">Model STT (offline)</div>
-            <select id="sttModelSelect" class="inspector-input">
-              <option value="">Auto (default)</option>
-            </select>
-            <div class="caption-hint">Model untuk transkripsi offline. Pilihan dimuat dari server (daftar model Faster-Whisper).</div>
-          </div>
-        </div>
+      </section>
+      <section class="ws-stage" data-ws-panel="export" id="wsStageExport" aria-label="Export">
+    <section class="panel proc-hero">
+      <div>
+        <p class="eyebrow">Processing</p>
+        <h2 id="procTitle">&mdash;</h2>
       </div>
-
-      <!-- Caption Timeline Panel -->
-    </div>
-
-    <div class="app-view page-view" data-view-panel="processing">
-      <section class="panel proc-hero">
-        <div>
-          <p class="eyebrow">Processing</p>
-          <h2 id="procTitle">&mdash;</h2>
-        </div>
-        <span class="status-pill status-pill-queued" id="procStatePill">IDLE</span>
-      </section>
-
-      <section class="panel proc-body">
-        <div class="proc-meta">
-          <div class="proc-meta-item"><span>JOB</span><strong id="procJobId" class="proc-mono">Preparing&hellip;</strong></div>
-          <div class="proc-meta-item"><span>Elapsed</span><strong id="procElapsed">00:00</strong></div>
-          <div class="proc-meta-item"><span>Estimated</span><strong id="procEta">&mdash;</strong></div>
-        </div>
-        <div class="proc-progress">
-          <div class="proc-track"><span id="procFill" style="width:0%"></span></div>
-          <em id="procPct">0%</em>
-        </div>
-        <p class="field-label">Current task</p>
-        <div class="proc-task" id="procTask">Waiting to start&hellip;</div>
-        <div id="procEngineWrap">
-          <p class="field-label">Engines</p>
-          <div class="engine-chip-row" id="procEngineRow">
-            <span class="engine-chip" id="engSource" data-state="unknown"><i aria-hidden="true"></i>SOURCE<b>&mdash;</b></span>
-            <span class="engine-chip" id="engFfmpeg" data-state="unknown"><i aria-hidden="true"></i>FFMPEG<b>&mdash;</b></span>
-            <span class="engine-chip" id="engWhisper" data-state="unknown"><i aria-hidden="true"></i>WHISPER<b>&mdash;</b></span>
-            <span class="engine-chip" id="engHook" data-state="unknown"><i aria-hidden="true"></i>HOOK<b>&mdash;</b></span>
-            <span class="engine-chip" id="engStory" data-state="unknown"><i aria-hidden="true"></i>STORY<b>&mdash;</b></span>
-            <span class="engine-chip" id="engScore" data-state="unknown"><i aria-hidden="true"></i>SCORING<b>&mdash;</b></span>
-            <span class="engine-chip" id="engDeep" data-state="unknown"><i aria-hidden="true"></i>DEEP TITLE<b>&mdash;</b></span>
-          </div>
-        </div>
-        <p class="field-label" id="procPipelineLabel">Pipeline</p>
-        <ol class="proc-pipeline" id="procPipeline"></ol>
-        <div class="tier-strip" id="procTierStrip" hidden></div>
-        <div class="proc-error" id="procErrorBox" hidden>
-          <strong>PROCESSING FAILED</strong>
-          <p>We couldn&rsquo;t complete this job.</p>
-          <p class="proc-error-reason">Reason: <span id="procErrorReason"></span></p>
-        </div>
-        <div class="proc-actions">
-          <button class="secondary-button" id="procCancelBtn" type="button">CANCEL JOB</button>
-          <button class="secondary-button" id="procRetryBtn" type="button" hidden>RETRY</button>
-          <button class="primary-button" id="procExportsBtn" type="button" hidden>VIEW EXPORTS</button>
-          <button class="primary-button" id="procResultsBtn" type="button" hidden>VIEW PROJECT</button>
-          <button class="ghost-button compact" id="procBackBtn" type="button">Back to Dashboard</button>
-        </div>
-      </section>
-
-      <section class="panel proc-queue">
-        <div class="panel-heading">
-          <h2>Queue</h2>
-          <span class="status-pill" id="procQueueCount">0</span>
-        </div>
-        <div class="queue-list" id="procQueueList"><div class="empty-state">Tidak ada job aktif.</div></div>
+      <span class="status-pill status-pill-queued" id="procStatePill">IDLE</span>
+    </section>
+            <section class="panel proc-body">
+              <div class="proc-meta">
+                <div class="proc-meta-item"><span>JOB</span><strong id="procJobId" class="proc-mono">Preparing&hellip;</strong></div>
+                <div class="proc-meta-item"><span>Elapsed</span><strong id="procElapsed">00:00</strong></div>
+                <div class="proc-meta-item"><span>Estimated</span><strong id="procEta">&mdash;</strong></div>
+              </div>
+              <div class="proc-progress">
+                <div class="proc-track"><span id="procFill" style="width:0%"></span></div>
+                <em id="procPct">0%</em>
+              </div>
+              <p class="field-label">Current task</p>
+              <div class="proc-task" id="procTask">Waiting to start&hellip;</div>
+              <div id="procEngineWrap">
+                <p class="field-label">Engines</p>
+                <div class="engine-chip-row" id="procEngineRow">
+                  <span class="engine-chip" id="engSource" data-state="unknown"><i aria-hidden="true"></i>SOURCE<b>&mdash;</b></span>
+                  <span class="engine-chip" id="engFfmpeg" data-state="unknown"><i aria-hidden="true"></i>FFMPEG<b>&mdash;</b></span>
+                  <span class="engine-chip" id="engWhisper" data-state="unknown"><i aria-hidden="true"></i>WHISPER<b>&mdash;</b></span>
+                  <span class="engine-chip" id="engHook" data-state="unknown"><i aria-hidden="true"></i>HOOK<b>&mdash;</b></span>
+                  <span class="engine-chip" id="engStory" data-state="unknown"><i aria-hidden="true"></i>STORY<b>&mdash;</b></span>
+                  <span class="engine-chip" id="engScore" data-state="unknown"><i aria-hidden="true"></i>SCORING<b>&mdash;</b></span>
+                  <span class="engine-chip" id="engDeep" data-state="unknown"><i aria-hidden="true"></i>DEEP TITLE<b>&mdash;</b></span>
+                </div>
+              </div>
+              <p class="field-label" id="procPipelineLabel">Pipeline</p>
+              <ol class="proc-pipeline" id="procPipeline"></ol>
+              <div class="tier-strip" id="procTierStrip" hidden></div>
+              <div class="proc-error" id="procErrorBox" hidden>
+                <strong>PROCESSING FAILED</strong>
+                <p>We couldn&rsquo;t complete this job.</p>
+                <p class="proc-error-reason">Reason: <span id="procErrorReason"></span></p>
+              </div>
+              <div class="proc-actions">
+                <button class="secondary-button" id="procCancelBtn" type="button">CANCEL JOB</button>
+                <button class="secondary-button" id="procRetryBtn" type="button" hidden>RETRY</button>
+                <button class="primary-button" id="procExportsBtn" type="button" hidden>VIEW EXPORTS</button>
+                <button class="primary-button" id="procResultsBtn" type="button" hidden>VIEW PROJECT</button>
+                <button class="ghost-button compact" id="procBackBtn" type="button">Back to Dashboard</button>
+              </div>
+            </section>
+            <section class="panel proc-queue">
+              <div class="panel-heading">
+                <h2>Queue</h2>
+                <span class="status-pill" id="procQueueCount">0</span>
+              </div>
+              <div class="queue-list" id="procQueueList"><div class="empty-state">Tidak ada job aktif.</div></div>
+            </section>
       </section>
     </div>
+
+
+
 
     <div class="app-view page-view" data-view-panel="library">
       <div class="page-panel panel">
@@ -942,89 +1005,6 @@
       </div>
     </div>
 
-    <div class="app-view page-view" data-view-panel="captions">
-      <section class="panel res-hero">
-        <div>
-          <p class="eyebrow">Captions</p>
-          <h2>Caption design workspace</h2>
-          <p class="dash-sub">Template library, styling, dan timeline kata. Preview memakai konfigurasi render nyata (font/warna/stroke/shadow/posisi).</p>
-        </div>
-        <button class="primary-button compact" id="capOpenLibraryBtn" type="button">BROWSE FULL LIBRARY</button>
-      </section>
-      <div class="captions-grid">
-        <section class="panel cap-lib-panel">
-          <div class="panel-heading"><h2>TEMPLATES</h2><span class="status-pill status-pill-running" id="capLibCount">0</span></div>
-          <input class="inspector-input" id="capLibSearch" type="text" maxlength="60" placeholder="Cari template&hellip;">
-          <div class="tpl-grid tpl-grid-flat" id="capLibList"></div>
-        </section>
-        <section class="panel cap-preview-panel">
-          <div class="panel-heading"><h2>CAPTION PLAY PREVIEW</h2><span class="status-pill" id="capPreviewName">&mdash;</span></div>
-          <div class="cap-stage">
-            <div class="cap-frame">
-              <video id="capPreviewVideo" playsinline preload="metadata"></video>
-              <div class="cap-lines" id="capPreviewLines"></div>
-            </div>
-            <div class="cap-controls">
-              <button class="primary-button compact" id="capPlayBtn" type="button">&#9654; PLAY CAPTIONS</button>
-              <div class="cap-playbar" id="capPlayBar" title="Klik untuk seek"><span id="capPlayFill"></span></div>
-              <span class="tl-label" id="capPlayTime">0.0s</span>
-            </div>
-            <p class="caption-hint">Memutar caption dengan timing kata ASLI dari transkrip + konfigurasi template aktif (identik dengan renderer FFmpeg). Video tampil bila project punya sumber lokal.</p>
-          </div>
-        </section>
-        <section class="panel cap-props-panel">
-          <div class="panel-heading"><h2>PROPERTIES</h2></div>
-          <dl class="ri-grid" id="capProps"></dl>
-        </section>
-      </div>
-      <div id="capTimelineMount">
-        <div class="caption-timeline-panel panel" id="captionTimelinePanel" style="display:none">
-          <div class="panel-heading">
-            <h2>Caption Timeline</h2>
-            <div class="caption-tl-actions">
-              <button class="ghost-button compact" id="refreshTimeline" type="button">Refresh</button>
-              <button class="ghost-button compact" id="importSrtBtn" type="button">Import SRT/VTT</button>
-              <input type="file" id="importSrtInput" accept=".srt,.vtt,text/plain" style="display:none">
-              <button class="ghost-button compact" id="exportSrt" type="button">Export SRT</button>
-              <select class="inspector-input" id="translateFrom" style="max-width:110px" title="Bahasa asli caption">
-                <option value="auto">Auto deteksi</option>
-                <option value="en">English</option>
-                <option value="id">Indonesia</option>
-                <option value="ms">Melayu</option>
-              </select>
-              <button class="ghost-button compact" id="translateBtn" type="button" title="Terjemahkan semua segmen caption ke bahasa pilihan di inspector (offline)">Terjemahkan</button>
-              <button class="primary-button compact" id="saveTimeline" type="button">Simpan Perubahan</button>
-            </div>
-          </div>
-          <div class="caption-track-wrap">
-            <div class="caption-tl-scroll" id="captionTlScroll">
-              <div class="caption-tl-inner" id="captionTlInner">
-                <div class="caption-ruler" id="captionRuler"></div>
-                <div class="caption-track" id="captionTrack">
-                  <div class="caption-playhead" id="captionPlayhead"></div>
-                </div>
-              </div>
-            </div>
-            <div class="caption-tl-zoom">
-              <span class="caption-tl-zoom-hint">Scroll = geser timeline &middot; Ctrl+Scroll = zoom &middot; Space = play/pause</span>
-              <span class="caption-tl-zoom-value" id="captionZoomValue">100%</span>
-            </div>
-          </div>
-          <div class="caption-edit-row">
-            <div class="caption-edit-time">
-              <span id="captionEditIndex">--</span>
-              <span id="captionEditTime">00:00 - 00:00</span>
-            </div>
-            <input class="caption-edit-input" id="captionEditInput" type="text" placeholder="Teks caption (klik blok di timeline untuk edit)">
-          </div>
-          <div class="caption-search-row">
-            <input class="caption-search-input" id="captionSearchInput" type="search" placeholder="Cari kata di caption...">
-            <span class="caption-search-count" id="captionSearchCount"></span>
-          </div>
-          <div class="caption-hint">Klik blok pada timeline untuk memilih &amp; mengedit teks caption. Simpan Perubahan agar dipakai saat export. Gunakan tombol play/space untuk preview.</div>
-        </div>
-      </div>
-    </div>
 
     <div class="app-view page-view" data-view-panel="exports">
       <div class="page-panel panel">

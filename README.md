@@ -325,6 +325,22 @@ Penting untuk `.venv`:
 - Verifikasi cepat: `Get-ChildItem .venv -Recurse | Where-Object LinkType` harus kosong.
 - `stt-engine.py` menambahkan folder dirinya ke `sys.path` supaya `import stt` tetap jalan di mode isolated Python embeddable.
 
+## Workspace (satu halaman, empat tahap)
+
+Seluruh alur kerja ada di satu halaman **Workspace**. Tidak perlu pindah menu untuk
+analisis, mengedit clip, caption, maupun export:
+
+| Tahap | Isi |
+|---|---|
+| **01 Source** | Tempel URL / upload video, rasio, generation mode, hook strategy, caption default, lalu **Generate Best Clips**. |
+| **02 Editor** | Daftar clip + preview + inspector (tab Clip / Intel / Settings) dan tombol export. |
+| **03 Captions** | Template library, preview caption, properti, dan timeline kata. |
+| **04 Export** | Progress job, pipeline tahap, dan antrean render. |
+
+Menu lama (`New Project`, `Studio`, `Captions`, `Processing`) tetap bisa dipanggil
+dari kode lama — semuanya diarahkan ke Workspace pada tahap yang sesuai.
+Sidebar menyorot **Workspace** selama berada di tahap mana pun.
+
 ## Pengujian
 
 ```powershell
