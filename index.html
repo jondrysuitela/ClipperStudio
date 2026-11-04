@@ -323,9 +323,11 @@
                       <span class="dz-size" id="dzFileSize"></span>
                     </div>
                   </div>
-                  <button class="wide-button primary-button" id="analyzeHookBtn" type="button" title="AI analyzes video: full STT transcript then AI Clip Director finds hooks, story structure, and best clip candidates">
-                    Generate Best Clips
+                  <button class="wide-button primary-button" id="sourcePrimaryBtn" type="button" title="Analisis sumber lalu buat clip — satu tombol untuk URL maupun file">
+                    Analisis &amp; Buat Clip
                   </button>
+                  <p class="caption-hint" id="sourceActionHint">Tempel URL YouTube atau pilih video, lalu klik sekali.</p>
+                  <button class="wide-button primary-button" id="analyzeHookBtn" type="button" style="display:none" aria-hidden="true" tabindex="-1">Generate Best Clips</button>
                   <div class="field-label" style="margin-top:10px">Project name (opsional)</div>
                   <input class="inspector-input" id="projectNameInput" type="text" maxlength="80" placeholder="Nama project — kosongkan untuk otomatis">
                   <div class="settings-grid" style="display:none">
@@ -360,7 +362,7 @@
                   </div>
                   <div class="url-row">
                     <textarea id="videoUrl" rows="2" placeholder="Paste 1 atau lebih URL YouTube&#10;satu URL per baris (max 10)"></textarea>
-                    <button class="primary-button" id="attachUrl" type="button">Analyze</button>
+                    <button class="primary-button" id="attachUrl" type="button" style="display:none" aria-hidden="true" tabindex="-1">Analyze</button>
                   </div>
                   <div class="process-steps" id="processSteps">
                     <span data-step="metadata">Metadata</span>
@@ -412,13 +414,12 @@
                         <span class="cap-slot" id="slotFiller"></span>
                       </div>
                       <div class="proc-actions" style="gap:8px; margin-top:6px">
-                        <button class="secondary-button compact" id="templateGalleryBtn" type="button" title="44 real caption templates with preview">Caption Template Library</button>
-                        <button class="ghost-button compact" id="createTranslateBtn" type="button" title="Translate caption segments offline (Indonesia ↔ English)">Translate Caption</button>
+                        
                         <span class="caption-status" id="createTplName"></span>
                       </div>
                     </div>
                   </details>
-                  <button class="wide-button primary-button" id="generateButton" type="button" disabled style="margin-top:8px">Generate clips</button>
+                  <button class="wide-button primary-button" id="generateButton" type="button" disabled style="display:none" aria-hidden="true" tabindex="-1">Generate clips</button>
                 </div>
       </section>
       <section class="ws-stage" data-ws-panel="editor" id="wsStageEditor" aria-label="Editor">
@@ -694,7 +695,8 @@
             </div>
       <div class="ws-caption-tools">
                       <section class="panel cap-lib-panel">
-                        <div class="panel-heading"><h2>TEMPLATES</h2><span class="status-pill status-pill-running" id="capLibCount">0</span></div>
+                        <div class="panel-heading"><h2>TEMPLATES</h2><span class="status-pill status-pill-running" id="capLibCount">0</span>
+              <button class="secondary-button compact" id="templateGalleryBtn" type="button" title="44 real caption templates with preview">Caption Template Library</button></div>
                         <input class="inspector-input" id="capLibSearch" type="text" maxlength="60" placeholder="Cari template&hellip;">
                         <div class="tpl-grid tpl-grid-flat" id="capLibList"></div>
                       </section>

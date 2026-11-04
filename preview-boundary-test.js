@@ -72,12 +72,21 @@ test("klien: upload lokal me-reset state turunan YouTube (noDownload/youtubeUrl)
 });
 
 // ── Tombol "Analyze Hook Viral" khusus drop video ───────────────────────────
-test("tombol: UI analyzeHookBtn ada di bawah dropzone", () => {
+test("tombol: satu aksi utama di bawah dropzone (URL / file / transcript)", () => {
   const html = fs.readFileSync("index.html", "utf8");
   const dz = html.indexOf('id="dropzone"');
-  const btn = html.indexOf('id="analyzeHookBtn"');
-  assert.ok(btn > -1, "analyzeHookBtn must exist");
-  assert.ok(dz > -1 && btn > dz && btn - dz < 2000, "button must sit right after the dropzone");
+  const primary = html.indexOf('id="sourcePrimaryBtn"');
+  assert.ok(primary > -1, "sourcePrimaryBtn must exist");
+  assert.ok(dz > -1 && primary > dz && primary - dz < 2000, "primary action sits right after the dropzone");
+
+  // Tombol lama tetap ada untuk handler-nya, tapi tidak boleh tampil lagi.
+  for (const id of ["analyzeHookBtn", "attachUrl", "generateButton"]) {
+    const at = html.indexOf(`id="${id}"`);
+    assert.ok(at > -1, `${id} kept for its handler`);
+    const tagStart = html.lastIndexOf("<", at);
+    const tagEnd = html.indexOf(">", at);
+    assert.match(html.slice(tagStart, tagEnd), /display:\s*none/, `${id} must be hidden from the UI`);
+  }
 });
 
 test("server: endpoint analyze-hook menjalankan job analisis (progres via polling)", () => {

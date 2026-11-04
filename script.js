@@ -1471,6 +1471,7 @@ async function uploadToBackend(file) {
 
 function loadProject(data) {
   state.projectId = data.id;
+  if (typeof refreshSourceAction === "function") refreshSourceAction();
   state.facePreviewByClip = Object.create(null);
   resetPreviewFaceTransform();
   // Project library (bukan drop baru) — hapus indikator file di dropzone.
@@ -1728,6 +1729,8 @@ async function processYouTubeUrl() {
       setProcessStep("", ["metadata", "clips"]);
       settleJobProgress("success", `${clips.length} clip dibuat`);
       showToast(data.fastMode ? `${clips.length} clip dibuat instan. Preview akan mengambil section asli.` : `${clips.length} clip dibuat. ${data.transcriptStatus || "Transcript tidak ditemukan."}`);
+      refreshSourceAction();
+      showView("studio");
       return;
     }
 
@@ -1770,6 +1773,7 @@ async function processYouTubeUrl() {
       setProcessStep("clips", ["metadata"]);
       loadProject(firstOk.project);
       setProcessStep("", ["metadata", "clips"]);
+      showView("studio");
     }
 
     const summary = `${ok.length}/${urls.length} berhasil`;
@@ -1870,6 +1874,7 @@ async function attachFile(file) {
     state.localUploadPromise = uploadPromise;
     await uploadPromise;
     markDropzone("loaded", file);
+    refreshSourceAction();
   } catch (error) {
     markDropzone("error", file);
     uploadStatus.textContent = "Failed";
@@ -2170,6 +2175,48 @@ $("#dropzone").addEventListener("drop", (event) => {
   attachFile(event.dataTransfer.files[0]);
 });
 
+// ── Satu tombol aksi untuk tahap Source ──
+// Dulu ada tiga tombol berbeda (Analyze URL, Generate Best Clips, Generate clips).
+// Sekarang satu tombol memilih aksi berdasarkan input yang tersedia.
+function sourceHasUrl() {
+  const el = $("#videoUrl");
+  return Boolean(el && el.value.trim());
+}
+function sourceHasFile() {
+  const tag = $("#dzFileTag");
+  return Boolean(tag && !tag.hidden);
+}
+function refreshSourceAction() {
+  const btn = $("#sourcePrimaryBtn");
+  const hint = $("#sourceActionHint");
+  if (!btn) return;
+  if (sourceHasUrl()) {
+    btn.textContent = "Analisis URL & Buat Clip";
+    btn.disabled = false;
+    if (hint) hint.textContent = "URL terdeteksi — satu klik untuk analisis + membuat clip.";
+  } else if (sourceHasFile()) {
+    btn.textContent = "Analisis Video & Buat Clip";
+    btn.disabled = false;
+    if (hint) hint.textContent = "Video siap — satu klik untuk transkripsi + clip.";
+  } else if (state.projectId) {
+    btn.textContent = "Buat Clip dari Transcript";
+    btn.disabled = false;
+    if (hint) hint.textContent = "Project aktif — buat ulang clip dari transcript yang tersimpan.";
+  } else {
+    btn.textContent = "Analisis & Buat Clip";
+    btn.disabled = true;
+    if (hint) hint.textContent = "Tempel URL YouTube atau pilih video dulu.";
+  }
+}
+if ($("#sourcePrimaryBtn")) {
+  $("#sourcePrimaryBtn").addEventListener("click", () => {
+    if (sourceHasUrl()) { $("#attachUrl").click(); return; }
+    if (sourceHasFile()) { $("#analyzeHookBtn").click(); return; }
+    if (state.projectId) { $("#generateButton").click(); return; }
+    showToast("Tempel URL YouTube atau pilih video dulu.");
+  });
+}
+if ($("#videoUrl")) $("#videoUrl").addEventListener("input", refreshSourceAction);
 $("#attachUrl").addEventListener("click", processYouTubeUrl);
 
 $("#videoUrl").addEventListener("keydown", (event) => {
@@ -2202,6 +2249,8 @@ $("#generateButton").addEventListener("click", async () => {
     uploadStatus.textContent = `${clips.length} clips ready`;
     settleJobProgress("success", `${clips.length} clip dari transcript`);
     showToast(`${clips.length} clip dibuat dari transcript.`);
+    refreshSourceAction();
+    showView("studio");
   } catch (err) {
     settleJobProgress("error", err.message);
     showToast(err.message);
@@ -5490,6 +5539,13 @@ function completeProcessingView(result) {
   }
   renderProcEngines(processingState.lastType, "", true);
   renderScoreTiers(result && result.clips, "procTierStrip");
+
+  // Setelah analisis selesai, langsung masuk Editor supaya clip bisa
+  // langsung dipilih — tidak perlu pindah tab manual.
+  if (String(processingState.lastType || "").includes("analyze")) {
+    refreshSourceAction();
+    showView("studio");
+  }
 }
 
 async function failProcessingView(err) {
@@ -8403,6 +8459,7 @@ async function bootCheck(name, label, work) {
 
 async function bootstrapApplication() {
   mountWorkspaces();
+  refreshSourceAction();
   // Paralel - total waktu tunggu = check terlambat, bukan jumlah semua.
   const checks = await Promise.all([
     bootCheck("system", "Connecting to the local engine…", async () => {
