@@ -2815,6 +2815,19 @@ textarea:focus-visible {
 .ws-stage.active { display: block; }
 .ws-stage > .panel + .panel { margin-top: 14px; }
 
+/* Caption menyatu dengan Editor: template + properti + timeline */
+.ws-caption-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+.ws-caption-tools .cap-lib-panel { max-height: 340px; overflow: auto; }
+.ws-stage .caption-timeline-panel { margin-top: 14px; }
+@media (max-width: 1100px) {
+  .ws-caption-tools { grid-template-columns: 1fr; }
+}
+
 /* Rail langkah: memberi urutan kerja yang sama dengan sidebar */
 .flow-steps {
   display: flex;

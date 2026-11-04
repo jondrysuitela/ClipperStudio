@@ -281,12 +281,12 @@ test("dashboard: nav lengkap & dashboard jadi landing default", () => {
   }
   assert.ok(!html.includes('data-view="newproject"'), "newproject is an ACTION (button), not a sidebar destination");
   assert.ok(html.includes('data-ws-panel="source"'), "new-project flow lives in the source stage");
-  for (const stage of ["source", "editor", "captions", "export"]) {
+  for (const stage of ["source", "editor", "export"]) {
     assert.ok(html.includes(`data-ws-panel="${stage}"`), `workspace stage ${stage}`);
   }
   assert.ok(!html.includes('data-view-panel="studio"'), "studio panel folded into workspace");
-  assert.ok(!html.includes('data-view-panel="captions"'), "captions panel folded into workspace");
-  assert.ok(!html.includes('data-view="captions"'), "captions is a stage, not a destination");
+  assert.ok(!html.includes('data-view-panel="captions"'), "captions panel folded into the editor");
+  assert.ok(html.includes('id="captionTimelinePanel"'), "caption timeline lives in the editor");
   assert.match(script, /mountWorkspaces\(\);/, "workspaces mounted at boot");
   assert.match(script, /function renderCaptionsWorkspace/, "caption workspace renderer");
 });
@@ -379,11 +379,11 @@ test("phase3: PREVIEW/STUDIO reuse infrastruktur existing — player ter-inventa
   const html = fs.readFileSync("index.html", "utf8");
   const videoTags = (html.match(/<video\b[^>]*\bid="([^"]+)"/g) || []).length;
   const ids = [...html.matchAll(/<video\b[^>]*\bid="([^"]+)"/g)].map((m) => m[1]);
-  // Dua player resmi: editor (studio) + caption-play preview. Duplikasi lain tetap terlarang.
-  assert.deepStrictEqual(ids.sort(), ["capPreviewVideo", "previewVideo"], "only the two inventoried players may exist");
-  assert.strictEqual(videoTags, 2, "no untracked third player");
-  const capVid = html.slice(html.indexOf('id="capPreviewVideo"') - 80, html.indexOf('id="capPreviewVideo"') + 120);
-  assert.match(capVid, /playsinline/, "caption preview is muted-inline scoped, not a competing editor");
+  // Satu player saja: preview editor sudah menampilkan caption, jadi
+  // caption-play preview terpisah (player kedua) dihapus.
+  assert.deepStrictEqual(ids.sort(), ["previewVideo"], "only the editor player may exist");
+  assert.strictEqual(videoTags, 1, "no duplicate caption player");
+  assert.ok(html.includes('id="captionBox"'), "editor preview renders caption overlay");
   const block = script.slice(script.indexOf("// ================= RESULTS WORKSPACE"), script.indexOf("const SETTINGS_KEY"));
   assert.match(block, /selectClip\(liveClip\)/, "handoff selects the exact clip in Studio");
   assert.match(block, /showView\("studio"\)/, "handoff opens existing Studio view");

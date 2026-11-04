@@ -716,6 +716,12 @@ function selectClip(clip) {
     state.captionLoadedFor = captionTimelineKey();
     captionTimelinePanel.style.display = "none";
   }
+  // Caption menyatu dengan editor: kalau segmen belum ada di cache, ambil
+  // sekali dari server supaya timeline langsung siap diedit (project lama
+  // atau setelah reload halaman).
+  if (!state.captionSegments.length && state.projectId && clip.id != null) {
+    hydrateCaptionSegments();
+  }
   const translateFromSel = $("#translateFrom");
   if (translateFromSel && translateFromSel.value !== "auto") translateFromSel.value = "auto";
   liveCaption.innerHTML = "";
@@ -1279,7 +1285,8 @@ function renderLibrary() {
 }
 
 // View lama yang sekarang menjadi tahap di dalam workspace.
-const WORKSPACE_STAGES = { newproject: "source", studio: "editor", captions: "captions", processing: "export" };
+// Captions bukan tahap terpisah: timeline & template hidup di dalam Editor.
+const WORKSPACE_STAGES = { newproject: "source", studio: "editor", captions: "editor", processing: "export" };
 
 function setWorkspaceStage(stage) {
   const key = WORKSPACE_STAGES[stage] || stage;
@@ -1294,9 +1301,10 @@ function setWorkspaceStage(stage) {
   $$(".ws-stage").forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.wsPanel === key);
   });
-  if (key === "captions") {
+  if (key === "editor") {
+    // Caption menyatu dengan editor: timeline tampil begitu ada project.
     const capPanel = document.getElementById("captionTimelinePanel");
-    if (capPanel && state.projectId) capPanel.style.display = "";
+    if (capPanel) capPanel.style.display = state.projectId ? "" : "none";
     renderCaptionsWorkspace();
   }
   updateWorkspaceHeader(key);
@@ -1334,8 +1342,7 @@ function showView(view) {
 // Header Workspace: konteks project + nama tahap aktif.
 const WS_STAGE_META = {
   source: "Source & analisis: tempel URL atau upload video, lalu Generate Best Clips.",
-  editor: "Editor: pilih clip, atur hook/caption, cek preview, lalu export.",
-  captions: "Captions: pilih template, atur style, dan rapikan timeline kata.",
+  editor: "Editor: pilih clip, atur hook, caption, dan timeline kata langsung di bawah preview.",
   export: "Export: pantau job render dan unduh hasilnya."
 };
 function updateWorkspaceHeader(stage) {
@@ -2927,6 +2934,39 @@ function normalizeCaptionSegments(segments, start, end) {
     .filter((s) => s.text && s.end > s.start);
 }
 
+// Ambil segmen caption clip aktif dari server (dipakai editor & tombol terjemah).
+async function hydrateCaptionSegments() {
+  const clip = state.activeClip;
+  if (!state.projectId || !clip || state.captionSegments.length) return;
+  try {
+    const q = new URLSearchParams({ start: Number(clip.start) || 0, end: Number(clip.end) || 0 });
+    const res = await fetch(`/api/projects/${state.projectId}/captions/${clip.id}?${q}`);
+    const data = await res.json();
+    if (!res.ok || !Array.isArray(data.segments) || !data.segments.length) return;
+    if (!state.activeClip || state.activeClip.id !== clip.id) return; // clip berganti saat fetch
+    // Server mengirim waktu absolut (detik video). Timeline butuh waktu relatif
+    // clip, jadi geser sekali di sini.
+    const offset = Number(clip.start) || 0;
+    // Deteksi absolut vs relatif dari akhir segmen: endpoint bisa mengirim
+    // segmen yang MULAI sebelum clip.start (overlap), jadi patokan start
+    // tidak akurat. Kalau ada end > durasi clip, waktunya absolut.
+    const clipDuration = Math.max(1, (Number(clip.end) || 0) - offset);
+    const looksAbsolute = offset > 0 && data.segments.some((seg) => Number(seg.end) > clipDuration + 1);
+    const shift = looksAbsolute ? offset : 0;
+    const shifted = data.segments.map((seg) => ({
+      ...seg,
+      start: Math.max(0, Number(seg.start) - shift),
+      end: Math.max(0, Number(seg.end) - shift),
+      words: Array.isArray(seg.words)
+        ? seg.words.map((w) => ({ ...w, start: Math.max(0, Number(w.start) - shift), end: Math.max(0, Number(w.end) - shift) }))
+        : []
+    }));
+    state.captionSegments = shifted;
+    state.liveSegments = state.captionSegments.map((seg) => ({ ...seg, words: Array.isArray(seg.words) ? seg.words.slice() : [] }));
+    captionTimelinePanel.style.display = "block";
+    loadCaptionTimeline(state.liveSegments);
+  } catch {}
+}
 function loadCaptionTimeline(segments) {
   if (!state.activeClip || !state.projectId) return;
   const dur = Math.max(1, state.activeClip.end - state.activeClip.start);

@@ -295,7 +295,6 @@
       <nav class="ws-stages" aria-label="Tahap workspace">
         <button class="ws-stage-tab active" type="button" data-ws-stage="source" aria-controls="wsStageSource"><span>01</span>Source</button>
         <button class="ws-stage-tab" type="button" data-ws-stage="editor" aria-controls="wsStageEditor"><span>02</span>Editor</button>
-        <button class="ws-stage-tab" type="button" data-ws-stage="captions" aria-controls="wsStageCaptions"><span>03</span>Captions</button>
         <button class="ws-stage-tab" type="button" data-ws-stage="export" aria-controls="wsStageExport"><span>04</span>Export</button>
       </nav>
       <section class="ws-stage active" data-ws-panel="source" id="wsStageSource" aria-label="Source">
@@ -693,81 +692,62 @@
                 </div>
               </div>
             </div>
-      </section>
-      <section class="ws-stage" data-ws-panel="captions" id="wsStageCaptions" aria-label="Captions">
-            <div class="captions-grid">
-              <section class="panel cap-lib-panel">
-                <div class="panel-heading"><h2>TEMPLATES</h2><span class="status-pill status-pill-running" id="capLibCount">0</span></div>
-                <input class="inspector-input" id="capLibSearch" type="text" maxlength="60" placeholder="Cari template&hellip;">
-                <div class="tpl-grid tpl-grid-flat" id="capLibList"></div>
-              </section>
-              <section class="panel cap-preview-panel">
-                <div class="panel-heading"><h2>CAPTION PLAY PREVIEW</h2><span class="status-pill" id="capPreviewName">&mdash;</span></div>
-                <div class="cap-stage">
-                  <div class="cap-frame">
-                    <video id="capPreviewVideo" playsinline preload="metadata"></video>
-                    <div class="cap-lines" id="capPreviewLines"></div>
-                  </div>
-                  <div class="cap-controls">
-                    <button class="primary-button compact" id="capPlayBtn" type="button">&#9654; PLAY CAPTIONS</button>
-                    <div class="cap-playbar" id="capPlayBar" title="Klik untuk seek"><span id="capPlayFill"></span></div>
-                    <span class="tl-label" id="capPlayTime">0.0s</span>
-                  </div>
-                  <p class="caption-hint">Memutar caption dengan timing kata ASLI dari transkrip + konfigurasi template aktif (identik dengan renderer FFmpeg). Video tampil bila project punya sumber lokal.</p>
-                </div>
-              </section>
-              <section class="panel cap-props-panel">
-                <div class="panel-heading"><h2>PROPERTIES</h2></div>
-                <dl class="ri-grid" id="capProps"></dl>
-              </section>
-            </div>
-            <div id="capTimelineMount">
-              <div class="caption-timeline-panel panel" id="captionTimelinePanel" style="display:none">
-                <div class="panel-heading">
-                  <h2>Caption Timeline</h2>
-                  <div class="caption-tl-actions">
-                    <button class="ghost-button compact" id="refreshTimeline" type="button">Refresh</button>
-                    <button class="ghost-button compact" id="importSrtBtn" type="button">Import SRT/VTT</button>
-                    <input type="file" id="importSrtInput" accept=".srt,.vtt,text/plain" style="display:none">
-                    <button class="ghost-button compact" id="exportSrt" type="button">Export SRT</button>
-                    <select class="inspector-input" id="translateFrom" style="max-width:110px" title="Bahasa asli caption">
-                      <option value="auto">Auto deteksi</option>
-                      <option value="en">English</option>
-                      <option value="id">Indonesia</option>
-                      <option value="ms">Melayu</option>
-                    </select>
-                    <button class="ghost-button compact" id="translateBtn" type="button" title="Terjemahkan semua segmen caption ke bahasa pilihan di inspector (offline)">Terjemahkan</button>
-                    <button class="primary-button compact" id="saveTimeline" type="button">Simpan Perubahan</button>
-                  </div>
-                </div>
-                <div class="caption-track-wrap">
-                  <div class="caption-tl-scroll" id="captionTlScroll">
-                    <div class="caption-tl-inner" id="captionTlInner">
-                      <div class="caption-ruler" id="captionRuler"></div>
-                      <div class="caption-track" id="captionTrack">
-                        <div class="caption-playhead" id="captionPlayhead"></div>
+      <div class="ws-caption-tools">
+                      <section class="panel cap-lib-panel">
+                        <div class="panel-heading"><h2>TEMPLATES</h2><span class="status-pill status-pill-running" id="capLibCount">0</span></div>
+                        <input class="inspector-input" id="capLibSearch" type="text" maxlength="60" placeholder="Cari template&hellip;">
+                        <div class="tpl-grid tpl-grid-flat" id="capLibList"></div>
+                      </section>
+                      <section class="panel cap-props-panel">
+                        <div class="panel-heading"><h2>PROPERTIES</h2></div>
+                        <dl class="ri-grid" id="capProps"></dl>
+                      </section>
+      </div>
+                    <div class="caption-timeline-panel panel" id="captionTimelinePanel" style="display:none">
+                      <div class="panel-heading">
+                        <h2>Caption Timeline</h2>
+                        <div class="caption-tl-actions">
+                          <button class="ghost-button compact" id="refreshTimeline" type="button">Refresh</button>
+                          <button class="ghost-button compact" id="importSrtBtn" type="button">Import SRT/VTT</button>
+                          <input type="file" id="importSrtInput" accept=".srt,.vtt,text/plain" style="display:none">
+                          <button class="ghost-button compact" id="exportSrt" type="button">Export SRT</button>
+                          <select class="inspector-input" id="translateFrom" style="max-width:110px" title="Bahasa asli caption">
+                            <option value="auto">Auto deteksi</option>
+                            <option value="en">English</option>
+                            <option value="id">Indonesia</option>
+                            <option value="ms">Melayu</option>
+                          </select>
+                          <button class="ghost-button compact" id="translateBtn" type="button" title="Terjemahkan semua segmen caption ke bahasa pilihan di inspector (offline)">Terjemahkan</button>
+                          <button class="primary-button compact" id="saveTimeline" type="button">Simpan Perubahan</button>
+                        </div>
                       </div>
+                      <div class="caption-track-wrap">
+                        <div class="caption-tl-scroll" id="captionTlScroll">
+                          <div class="caption-tl-inner" id="captionTlInner">
+                            <div class="caption-ruler" id="captionRuler"></div>
+                            <div class="caption-track" id="captionTrack">
+                              <div class="caption-playhead" id="captionPlayhead"></div>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="caption-tl-zoom">
+                          <span class="caption-tl-zoom-hint">Scroll = geser timeline &middot; Ctrl+Scroll = zoom &middot; Space = play/pause</span>
+                          <span class="caption-tl-zoom-value" id="captionZoomValue">100%</span>
+                        </div>
+                      </div>
+                      <div class="caption-edit-row">
+                        <div class="caption-edit-time">
+                          <span id="captionEditIndex">--</span>
+                          <span id="captionEditTime">00:00 - 00:00</span>
+                        </div>
+                        <input class="caption-edit-input" id="captionEditInput" type="text" placeholder="Teks caption (klik blok di timeline untuk edit)">
+                      </div>
+                      <div class="caption-search-row">
+                        <input class="caption-search-input" id="captionSearchInput" type="search" placeholder="Cari kata di caption...">
+                        <span class="caption-search-count" id="captionSearchCount"></span>
+                      </div>
+                      <div class="caption-hint">Klik blok pada timeline untuk memilih &amp; mengedit teks caption. Simpan Perubahan agar dipakai saat export. Gunakan tombol play/space untuk preview.</div>
                     </div>
-                  </div>
-                  <div class="caption-tl-zoom">
-                    <span class="caption-tl-zoom-hint">Scroll = geser timeline &middot; Ctrl+Scroll = zoom &middot; Space = play/pause</span>
-                    <span class="caption-tl-zoom-value" id="captionZoomValue">100%</span>
-                  </div>
-                </div>
-                <div class="caption-edit-row">
-                  <div class="caption-edit-time">
-                    <span id="captionEditIndex">--</span>
-                    <span id="captionEditTime">00:00 - 00:00</span>
-                  </div>
-                  <input class="caption-edit-input" id="captionEditInput" type="text" placeholder="Teks caption (klik blok di timeline untuk edit)">
-                </div>
-                <div class="caption-search-row">
-                  <input class="caption-search-input" id="captionSearchInput" type="search" placeholder="Cari kata di caption...">
-                  <span class="caption-search-count" id="captionSearchCount"></span>
-                </div>
-                <div class="caption-hint">Klik blok pada timeline untuk memilih &amp; mengedit teks caption. Simpan Perubahan agar dipakai saat export. Gunakan tombol play/space untuk preview.</div>
-              </div>
-            </div>
       </section>
       <section class="ws-stage" data-ws-panel="export" id="wsStageExport" aria-label="Export">
     <section class="panel proc-hero">
