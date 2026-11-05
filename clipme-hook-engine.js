@@ -387,6 +387,12 @@ function scoreHook(sentence, lang, context) {
   const concreteAnchor = /\b(19|20)\d{2}\b|\b\d{1,3}([.,]\d+)?\s?(juta|miliar|milyar|ribu|rb|jt|m|k)\b/i.test(text);
   if (concreteAnchor) score += 4;
 
+  // ---- emphasis audio (opsional) ----
+  // Diisi pemanggil dari clipme-audio-emphasis (ucapan lebih keras / jeda
+  // dramatis). Tanpa data audio nilainya 0, jadi perilaku lama tidak berubah.
+  const audioBonus = Math.max(0, Math.min(10, Number(context && context.audioBonus) || 0));
+  if (audioBonus) score += audioBonus;
+
   // ---- penalties ----
   const penalties = { filler: 0, repetition: 0, hedge: 0, long: 0, deictic: 0, pronounNoAntecedent: 0 };
 
@@ -451,7 +457,8 @@ function scoreHook(sentence, lang, context) {
   // semuanya "weak". 45/30 memisahkan kandidat teratas (~p95 lokal) dari
   // kalimat biasa tanpa mengubah skor absolut.
   const band = score >= 45 ? "strong" : score >= 30 ? "medium" : "weak";
-  const evidence = { specificity, density, curiosity, tension, novelty, contrarian: contrarian ? 1 : 0, stakes: stakes ? 1 : 0, secondPerson: secondPerson ? 1 : 0, anchor: concreteAnchor ? 1 : 0, clarity: Math.min(8, wc >= 4 && wc <= 16 ? 6 : wc <= 22 ? 3 : 0) + (/[.!?…]$/.test(text) ? 2 : 0), context: contextInd, value, authenticity };
+  const evidence = { specificity, density, curiosity, tension, novelty, contrarian: contrarian ? 1 : 0, stakes: stakes ? 1 : 0, secondPerson: secondPerson ? 1 : 0, anchor: concreteAnchor ? 1 : 0,
+    audio: audioBonus, clarity: Math.min(8, wc >= 4 && wc <= 16 ? 6 : wc <= 22 ? 3 : 0) + (/[.!?…]$/.test(text) ? 2 : 0), context: contextInd, value, authenticity };
   const deepResult = dimensionScores(text, lang, context, evidence, penalties);
 
   return {

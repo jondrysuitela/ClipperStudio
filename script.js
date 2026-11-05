@@ -4972,6 +4972,18 @@ async function loadAnalytics() {
       ? "Clip dengan skor engine tertinggi juga yang paling banyak dilihat (observasi awal)."
       : "Clip skor tertinggi BELUM menjadi yang paling banyak dilihat (observasi awal).");
     addDna("Korelasi tidak disimpulkan sebagai sebab-akibat; data observasional.");
+
+  // 8) Bobot hook hasil pembelajaran dari ledger aktual (dihitung server).
+  try {
+    const wr = await fetch(`/api/intel/hook-weights?t=${Date.now()}`);
+    const wd = await wr.json();
+    if (wr.ok && wd && wd.total >= 3) {
+      const parts = Object.entries(wd.weights || {})
+        .sort((a, b) => Number(b[1]) - Number(a[1]))
+        .map(([k, v]) => `${k} ×${Number(v).toFixed(2)}`);
+      if (parts.length) addDna(`Bobot hook hasil pembelajaran (${wd.total} post): ${parts.join(" · ")}.`);
+    }
+  } catch {}
   } else if (linked.length === 1) {
     addDna("Butuh ≥2 clip ter-link untuk membandingkan prediksi vs aktual.");
   }

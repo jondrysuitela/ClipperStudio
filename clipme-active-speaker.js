@@ -269,17 +269,22 @@
       }
       if (!bestFace) continue;
 
-      // Crop dengan headroom atas (upper third)
-      let cropW = Math.round(sourceHeight * targetAspect);
-      let cropH = sourceHeight;
+      // Crop dengan headroom atas. `zoom` > 1 memperketat framing (kepala +
+      // bahu) alih-alih memakai tinggi penuh sumber; aspect tetap dijaga.
+      const zoom = clamp(finite(opts.zoom, 1), 1, 1.8);
+      const headroom = clamp(finite(opts.headroom, 0.38), 0.2, 0.6);
+      let cropH = Math.round(sourceHeight / zoom);
+      let cropW = Math.round(cropH * targetAspect);
       if (cropW > sourceWidth) {
         cropW = sourceWidth;
         cropH = Math.round(cropW / targetAspect);
       }
+      if (cropH > sourceHeight) cropH = sourceHeight;
       const cx = bestFace.x + bestFace.w / 2;
-      const cy = bestFace.y + bestFace.h / 2;
-      let cropX = clamp(cx - cropW / 2, 0, Math.max(0, sourceWidth - cropW));
-      let cropY = clamp(cy - cropH * 0.33, 0, Math.max(0, sourceHeight - cropH));
+      const faceTop = finite(bestFace.y, 0);
+      const cy = faceTop + finite(bestFace.h, 0) / 2;
+      const cropX = clamp(cx - cropW / 2, 0, Math.max(0, sourceWidth - cropW));
+      const cropY = clamp(cy - cropH * headroom, 0, Math.max(0, sourceHeight - cropH));
 
       const baseCrop = { x: Math.round(cropX), y: Math.round(cropY), w: cropW, h: cropH };
       const finalCrop = lookRoom

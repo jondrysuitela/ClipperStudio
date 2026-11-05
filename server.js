@@ -4331,7 +4331,7 @@ async function exportClip(payload, setProgress = () => {}, children = null, opti
       speakerScript: SPEAKER_DETECT_PY, faceScript: FACE_DETECT_PY, ffmpegPath: FFMPEG, modelsRoot: MODELS_ROOT,
       sampleFps: 3, minSegmentMs: 300, noiseDb: -35,
       enableFaceTracking: payload.faceTrack, sourceW: sourceVideoWidth, sourceH: sourceVideoHeight,
-      targetAspect: resolveRatio(payload.ratio),
+      targetAspect: resolveRatio(payload.ratio), zoom: Number(process.env.CLIPFORGE_FACE_ZOOM || 1),
       faceStartSeconds: analysisSourceIsClipSection ? 0 : originalStart,
       faceDurationSeconds: cutDuration
     };
@@ -4356,7 +4356,7 @@ async function exportClip(payload, setProgress = () => {}, children = null, opti
       analyzeResult.associations = localAIModule.associateSpeakerWithFace(analyzeResult.speakerTimeline, analyzeResult.faceTimeline, {
         sourceWidth: sourceVideoWidth,
         sourceHeight: sourceVideoHeight,
-        targetAspect: resolveRatio(payload.ratio)
+        targetAspect: resolveRatio(payload.ratio), zoom: Number(process.env.CLIPFORGE_FACE_ZOOM || 1)
       });
       const localaiDir = path.join(projectDir, "localai");
       fs.mkdirSync(localaiDir, { recursive: true });
@@ -5536,6 +5536,60 @@ async function runCaptionQAPass(timed, language, enhance) {
   return out;
 }
 
+// Isi lubang transkrip dengan STT, hanya untuk rentang yang kosong.
+// Subtitle YouTube kadang hanya menutup sebagian clip (musik, jeda, potongan
+// hilang). Menjalankan STT ulang untuk seluruh video mahal; di sini hanya gap
+// yang >= 5 detik dan <= 45 detik, maksimal 4 lubang per clip.
+async function fillClipGapsWithStt(projectDir, manifest, payload, clip, segments, children = null) {
+  if (process.env.CLIPFORGE_GAP_FILL === "0") return { segments, filled: 0 };
+  if (!process.env.OPENAI_API_KEY && !fs.existsSync(VENV_PYTHON)) return { segments, filled: 0 };
+  if (!Array.isArray(segments) || !segments.length) return { segments, filled: 0 };
+  // Butuh file sumber lokal; untuk YouTube tanpa unduhan, biarkan apa adanya.
+  const source = findSourceFile(projectDir) || findCachedSection(projectDir, payload, "export");
+  if (!source) return { segments, filled: 0 };
+
+  let gapsModule;
+  try { gapsModule = require(path.join(ROOT, "clipme-transcript-gaps.js")); } catch { return { segments, filled: 0 }; }
+  const start = Number(clip.start) || 0;
+  const end = Number(clip.end) || start;
+  if (gapsModule.coverageRatio(segments, start, end) >= 0.85) return { segments, filled: 0 };
+
+  const gaps = gapsModule.findGaps(segments, start, end, { minGap: 5, maxGap: 45, maxGaps: 4 });
+  if (!gaps.length) return { segments, filled: 0 };
+
+  const extra = [];
+  for (let i = 0; i < gaps.length; i++) {
+    const gap = gaps[i];
+    const audio = path.join(TMP_DIR, `gapfill-${process.pid}-${Date.now()}-${i}.wav`);
+    try {
+      await run(FFMPEG, [
+        "-y", "-ss", String(gap.start), "-t", String(Math.max(0.5, gap.end - gap.start)),
+        "-i", source, "-vn", "-ac", "1", "-ar", "16000", audio
+      ], 300000, children);
+      const langTag = clipmeLangTag(payload.language || "");
+      const stt = await transcribeAudio(audio, langTag === "mix" ? "" : langTag, "", children);
+      for (const seg of stt.segments || []) {
+        const text = String(seg.text || "").trim();
+        if (!text) continue;
+        extra.push({
+          start: gap.start + (Number(seg.start) || 0),
+          end: gap.start + (Number(seg.end) || 0),
+          text
+        });
+      }
+    } catch {
+      // satu gap gagal: lanjut gap berikutnya
+    } finally {
+      try { fs.rmSync(audio, { force: true }); } catch {}
+    }
+  }
+
+  if (!extra.length) return { segments, filled: 0 };
+  const merged = gapsModule.mergeSegments(segments, extra);
+  console.log(`[GapFill] ${extra.length} segmen ditambahkan dari ${gaps.length} lubang`);
+  return { segments: merged, filled: extra.length };
+}
+
 async function handleAutoCaptions(req, res) {
   const payload = JSON.parse((await collectRequest(req, 20)).toString("utf8"));
   const projectId = sanitizeString(payload.projectId || "");
@@ -5609,6 +5663,17 @@ async function handleAutoCaptions(req, res) {
   if (!segments.length) {
     const cached = clipTranscriptCacheRead(projectDir, payload);
     if (cached?.segments?.length) segments = cached.segments;
+  }
+
+  // Caption sering "hilang" bukan karena engine, tapi karena subtitle sumber
+  // hanya menutup sebagian clip. Isi lubangnya sebelum caption disusun.
+  if (segments.length) {
+    try {
+      const filled = await fillClipGapsWithStt(projectDir, manifest, payload, clip, segments);
+      if (filled.segments !== segments) segments = filled.segments;
+    } catch (e) {
+      console.warn(`[GapFill] dilewati: ${e.message}`);
+    }
   }
 
   if (!segments.length) {
@@ -6387,6 +6452,59 @@ function readExportInfo(outputPath) {
     }
   }
   return meta.project || meta.hook ? meta : null;
+}
+
+// Kumpulkan (hook, performa) dari export nyata, lalu hitung bobot per tipe hook.
+// Data performa berasal dari Performance Ledger yang diisi user — bukan taksiran.
+function collectHookPerformance() {
+  const rows = [];
+  const walk = (dir) => {
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (!entry.name.endsWith(".mp4")) continue;
+      const info = readExportInfo(full);
+      if (!info || !info.hook) continue;
+      const rel = path.relative(OUTPUT_DIR, full).split(path.sep).join("/");
+      const perf = readPerf(perfPathFor(rel));
+      const last = perf.records.length ? perf.records[perf.records.length - 1] : null;
+      if (!last) continue;
+      rows.push({
+        hook: String(info.hook || "").slice(0, 200),
+        views: Number(last.views) || 0,
+        likes: Number(last.likes) || 0,
+        comments: Number(last.comments) || 0,
+        shares: Number(last.shares) || 0
+      });
+    }
+  };
+  if (fs.existsSync(OUTPUT_DIR)) walk(OUTPUT_DIR);
+  return rows;
+}
+
+function handleHookWeights(req, res) {
+  try {
+    const learn = require(path.join(ROOT, "clipme-hook-learn.js"));
+    const rows = collectHookPerformance();
+    const lang = "id";
+    const typed = rows.map((row) => ({
+      ...row,
+      hookType: (hookEngineModule && typeof hookEngineModule.classifyHookType === "function")
+        ? hookEngineModule.classifyHookType(row.hook, lang)
+        : "unknown"
+    }));
+    const learned = learn.learnWeights(typed, { minSamples: 3 });
+    sendJson(res, 200, {
+      ...learned,
+      hooks: typed.length,
+      withPerf: typed.length,
+      updatedAt: Date.now()
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Gagal menghitung bobot." });
+  }
 }
 
 function handleDeleteExport(req, res, params) {
@@ -7677,6 +7795,7 @@ router
   .add("GET", "/api/projects/:projectId", handleGetProject)
   .add("DELETE", "/api/projects/:projectId", handleDeleteProject)
   .add("GET", "/api/exports", handleListExports)
+  .add("GET", "/api/intel/hook-weights", handleHookWeights)
   .add("DELETE", /^\/api\/exports\/(.+)$/, (req, res, m) => handleDeleteExport(req, res, { filename: m[1] }))
   .add("GET", /^\/api\/perf\/(.+)$/, (req, res, m) => handleGetPerf(req, res, { filename: m[1] }))
   .add("POST", /^\/api\/perf\/(.+)$/, (req, res, m) => handleSavePerf(req, res, { filename: m[1] }))
