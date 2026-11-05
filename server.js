@@ -5702,6 +5702,125 @@ async function fillClipGapsWithStt(projectDir, manifest, payload, clip, segments
   return { segments: merged, filled: extra.length };
 }
 
+// Auto-caption YouTube bersifat BERGULIR: satu baris tampil lebih lama dari
+// waktu ucapannya, sehingga rentang antar baris bertumpuk 1-2 detik. Menyusun
+// kata dari tOffset apa adanya membuat urutan kata kacau (kata baris berikutnya
+// muncul sebelum kata baris sebelumnya) dan caption meleset.
+//
+// Perbaikan: beri setiap baris satu slot waktu eksklusif [start, nextStart),
+// lalu bagi kata-katanya proporsional di dalam slot itu. Awal baris tetap waktu
+// asli (tidak digeser), jadi tidak ada drift, dan tidak ada kata yang hilang.
+function deRollTranscriptSegments(segments, clipStart, clipEnd) {
+  const list = (segments || [])
+    .map((seg) => ({
+      start: Number(seg.start) || 0,
+      end: Number(seg.end) || 0,
+      text: String(seg.text || "").trim()
+    }))
+    .filter((seg) => seg.text)
+    .sort((a, b) => a.start - b.start);
+
+  // Deteksi rolling: mayoritas pasangan bertumpuk lebih dari 150 ms.
+  let overlaps = 0;
+  let pairs = 0;
+  for (let i = 1; i < list.length; i++) {
+    pairs += 1;
+    if (list[i].start < list[i - 1].end - 0.15) overlaps += 1;
+  }
+  const rolling = pairs > 0 && overlaps / pairs >= 0.3;
+  if (!rolling) return { segments: list, rolling: false };
+
+  // Filter HARUS memakai waktu asli lebih dulu. Kalau di-clamp dulu, semua
+  // baris sebelum clip menjadi start=clipStart dan ikut tergabung — pernah
+  // menghasilkan satu caption raksasa berisi seluruh transcript.
+  const clamped = list
+    .filter((seg) => seg.end > clipStart && seg.start < clipEnd)
+    .map((seg) => {
+      const start = Math.max(clipStart, seg.start);
+      const end = Math.min(clipEnd, seg.end);
+      const span = Math.max(0.001, seg.end - seg.start);
+      const words = seg.text.split(/\s+/).filter(Boolean);
+      let text = seg.text;
+
+      // Baris pertama/terakhir bisa hanya sebagian masuk clip. Buang kata yang
+      // diucapkan di luar clip secara proporsional, supaya caption tidak
+      // mendahului/menyusul audio.
+      if (seg.start < clipStart && words.length > 1) {
+        const cut = (clipStart - seg.start) / span;
+        const drop = Math.min(words.length - 1, Math.floor(words.length * cut));
+        text = words.slice(drop).join(" ");
+      }
+      if (seg.end > clipEnd && words.length > 1) {
+        const keep = Math.max(1, Math.ceil(words.length * ((clipEnd - seg.start) / span)));
+        text = text.split(/\s+/).filter(Boolean).slice(0, keep).join(" ");
+      }
+      return { start, end, text };
+    });
+
+  // Baris dengan slot sangat pendek (<0.35 s) tidak mungkin dibaca. Gabungkan
+  // teksnya ke baris berikutnya, jangan bikin caption 50 ms.
+  const MIN_SLOT = 0.35;
+  const merged = [];
+  let i = 0;
+  while (i < clamped.length) {
+    const start = clamped[i].start;
+    let text = clamped[i].text;
+    let last = i;
+    const slotEnd = (idx) => (idx + 1 < clamped.length ? Math.min(clipEnd, clamped[idx + 1].start) : clipEnd);
+    let end = slotEnd(last);
+    while (end - start < MIN_SLOT && last + 1 < clamped.length) {
+      last += 1;
+      text = `${text} ${clamped[last].text}`.trim();
+      end = slotEnd(last);
+    }
+    if (end > start) merged.push({ start, end, text });
+    i = last + 1;
+  }
+
+  return { segments: merged, rolling: true };
+}
+
+// Ambil audio clip (0..durasi) untuk STT. Sumber bisa file lokal, section yang
+// sudah pernah diunduh, atau unduhan YouTube on-demand.
+async function extractClipAudioForStt(projectDir, manifest, payload, children = null) {
+  // PENTING: section YouTube SUDAH berupa potongan clip (mulai dari payload.start).
+  // Kalau dipotong lagi dengan -ss start, hasilnya kosong -> STT "no-speech".
+  let source = findSourceFile(projectDir);
+  let isSection = false;
+  if (!source) {
+    const cached = findCachedSection(projectDir, payload, "export");
+    if (cached) { source = cached; isSection = true; }
+  }
+  if (!source && manifest && manifest.type === "youtube" && typeof downloadYouTubeSection === "function") {
+    try {
+      source = await downloadYouTubeSection(projectDir, manifest, payload, {}, children);
+      isSection = !!source;
+    } catch (err) {
+      console.warn(`[Caption] gagal mengunduh section untuk STT: ${String(err.message || err).slice(0, 120)}`);
+      source = "";
+    }
+  }
+  if (!source || !fs.existsSync(source)) {
+    console.warn(`[Caption] sumber media untuk STT tidak tersedia (type=${manifest && manifest.type})`);
+    return "";
+  }
+
+  const start = Math.max(0, Number(payload.start) || 0);
+  const end = Math.max(start + 0.5, Number(payload.end) || start + 30);
+  const out = path.join(TMP_DIR, `capaudio-${process.pid}-${Date.now()}-${Math.round(start)}.wav`);
+  // Section = sudah terpotong; file sumber penuh = perlu -ss/-t.
+  const args = isSection
+    ? ["-y", "-i", source, "-vn", "-ac", "1", "-ar", "16000", out]
+    : ["-y", "-ss", String(start), "-t", String(end - start), "-i", source, "-vn", "-ac", "1", "-ar", "16000", out];
+  try {
+    await run(FFMPEG, args, 300000, children);
+    return fs.existsSync(out) ? out : "";
+  } catch (err) {
+    console.warn(`[Caption] gagal memotong audio clip: ${String(err.message || err).slice(0, 120)}`);
+    return "";
+  }
+}
+
 async function handleAutoCaptions(req, res) {
   const payload = JSON.parse((await collectRequest(req, 20)).toString("utf8"));
   const projectId = sanitizeString(payload.projectId || "");
@@ -5821,7 +5940,67 @@ async function handleAutoCaptions(req, res) {
     return;
   }
 
-  const rawWords = flattenTranscriptWords(segments);
+  const clipStart0 = Number(clip.start) || 0;
+  const clipEnd0 = Number(clip.end) || clipStart0;
+  const derolled = deRollTranscriptSegments(segments, clipStart0, clipEnd0);
+  if (derolled.rolling) {
+    console.log(`[Caption] transcript bergulir terdeteksi: ${derolled.segments.length} baris dipetakan ke slot waktu`);
+  }
+
+  // Transcript bergulir tidak menyimpan timing kata yang bisa dipercaya:
+  // menebaknya dari rentang baris menghasilkan caption cepat/meleset. Untuk
+  // kasus ini ukur langsung dari audio clip (whisper lokal) — hasilnya
+  // 0-based terhadap clip, jadi otomatis sinkron.
+  let captionSegments = derolled.segments;
+  let timingSource = derolled.rolling ? "derolled" : "transcript";
+  const sttMode = String(process.env.CLIPFORGE_CAPTION_STT || "auto");
+  const wantStt = sttMode === "1" || (sttMode !== "0" && derolled.rolling);
+  if (wantStt && fs.existsSync(VENV_PYTHON)) {
+    const audioPath = await extractClipAudioForStt(projectDir, manifest, payload);
+    if (audioPath) {
+      try {
+        const stt = await transcribeAudio(audioPath, clipmeLangTag(payload.language || ""), payload.model || "");
+const sttSegments = (stt.segments || [])
+          .map((seg) => ({
+            start: Math.max(0, Number(seg.start) || 0),
+            end: Math.max(0, Number(seg.end) || 0),
+            text: String(seg.text || "").trim()
+          }))
+          .filter((seg) => seg.text && seg.end > seg.start);
+        if (sttSegments.length) {
+          // STT akurat waktunya, tetapi model kecil bisa melewatkan bagian
+          // (musik/jeda/ucapan pelan). Isi lubang yang benar-benar kosong
+          // dengan baris transcript, tanpa menggeser bagian yang sudah akurat.
+          const filled = [...sttSegments];
+          // Isi hanya lubang panjang (>2.5 s) yang benar-benar tanpa suara
+          // tercatat; kalau tidak, baris transcript akan menduplikasi ucapan
+          // yang sudah ditangkap STT dan caption jadi berlipat.
+          for (const line of derolled.segments) {
+            const overlaps = sttSegments.some(
+              (seg) => Math.min(seg.end, line.end) - Math.max(seg.start, line.start) > 0.35
+            );
+            if (overlaps) continue;
+            const gap = sttSegments.reduce((acc, seg) => {
+              if (seg.end <= line.start) return Math.min(acc, line.start - seg.end);
+              if (seg.start >= line.end) return Math.min(acc, seg.start - line.end);
+              return acc;
+            }, Infinity);
+            if (gap >= 2.5) filled.push({ start: line.start, end: line.end, text: line.text });
+          }
+          filled.sort((a, b) => a.start - b.start);
+          captionSegments = filled;
+          timingSource = `stt-${stt.provider || "local"}`;
+          console.log(`[Caption] timing dari STT clip (${sttSegments.length} segmen) + ${filled.length - sttSegments.length} baris transcript untuk lubang`);
+        }
+      } catch (err) {
+        console.warn(`[Caption] STT clip gagal, pakai transcript: ${String(err.message || err).slice(0, 120)}`);
+      } finally {
+        try { fs.unlinkSync(audioPath); } catch {}
+      }
+    }
+  }
+
+  const rawWords = flattenTranscriptWords(captionSegments);
   if (!rawWords.length) { sendJson(res, 400, { error: "Transkrip kosong." }); return; }
 
   // Hanya kata di dalam rentang clip. Transkrip sering menyertakan segmen utuh
@@ -5863,23 +6042,12 @@ async function handleAutoCaptions(req, res) {
     .filter((w) => w.end > w.start)
     // Sengaja TIDAK diurutkan ulang berdasarkan waktu: pada auto-caption
 
-  // Auto-caption YouTube bersifat bergulir: baris berikutnya mulai sebelum baris
-  // sebelumnya selesai, sehingga kata-katanya bertumpuk di timeline. Kalau
-  // dibiarkan, caption saling menimpa dan sebagian kata tampil dua kali.
-  // Serialkan: setiap kata mulai setelah kata sebelumnya berakhir, durasi asli
-  // dipertahankan.
-  const wordLevel = [];
-  let wordCursor = 0;
-  for (const w of prepared) {
-    if (!String(w.text || "").trim()) continue;
-    const dur = Math.max(0.05, Math.min(1.2, w.end - w.start));
-    const start = Math.max(w.start, wordCursor);
-    if (start >= clipDuration) break;
-    const end = Math.min(clipDuration, start + dur);
-    if (end <= start) break;
-    wordLevel.push({ ...w, start, end });
-    wordCursor = end;
-  }
+  // JANGAN menggeser waktu kata. Auto-caption YouTube memang bergulir (rentang
+  // baris saling tumpang tindih), tetapi tOffset tiap kata tetap benar. Pergeseran
+  // serial pernah dicoba dan membuat seluruh caption meleset makin jauh ke
+  // belakang. Tumpang tindih ditangani di level segmen (lihat pemangkasan di
+  // bawah), bukan dengan menggeser kata.
+  const wordLevel = prepared.filter((w) => String(w.text || "").trim());
 
   if (!wordLevel.length) { sendJson(res, 400, { error: "Tidak ada kata di dalam rentang clip." }); return; }
 
@@ -5996,16 +6164,27 @@ async function handleAutoCaptions(req, res) {
     });
   }
 
-  // Caption tidak boleh tumpang tindih atau melewati durasi clip: dua masalah
-  // ini yang membuat teks terasa tidak sinkron dengan suara.
+  // Caption tidak boleh tumpang tindih atau melewati durasi clip.
+  //
+  // Cara yang BENAR untuk auto-caption bergulir: mulai tiap caption pada waktu
+  // aslinya (itu waktu baris itu diucapkan), lalu potong ujungnya di awal
+  // caption berikutnya. Jangan pernah menggeser awal caption ke akhir caption
+  // sebelumnya — itu membuat seluruh teks tertinggal dari suara (drift).
   const monotonic = [];
   let prevEnd = 0;
-  for (const seg of timed) {
-    const rawStart = Math.max(0, Math.min(clipDuration, Number(seg.start) || 0));
-    const rawEnd = Math.max(rawStart + 0.05, Math.min(clipDuration, Number(seg.end) || rawStart));
-    const start = Math.max(rawStart, prevEnd);
+  for (let i = 0; i < timed.length; i++) {
+    const seg = timed[i];
+    let start = Math.max(0, Math.min(clipDuration, Number(seg.start) || 0));
+    // Sisa tumpang tindih kecil (mis. baris transcript yang diisikan ke lubang)
+    // digeser ke akhir caption sebelumnya supaya tidak ada dua caption aktif.
+    if (start < prevEnd) start = prevEnd;
     if (start >= clipDuration - 0.05) continue;
-    const end = Math.min(clipDuration, Math.max(start + 0.05, rawEnd));
+    let end = Math.max(start + 0.05, Math.min(clipDuration, Number(seg.end) || start));
+
+    const next = timed[i + 1];
+    const nextStart = next ? Math.max(0, Math.min(clipDuration, Number(next.start) || 0)) : clipDuration;
+    if (nextStart > start + 0.05) end = Math.min(end, nextStart);
+
     monotonic.push({ ...seg, id: monotonic.length + 1, start, end });
     prevEnd = end;
   }
@@ -6070,7 +6249,8 @@ async function handleAutoCaptions(req, res) {
     segments: timed,
     qa: qaResult || { warnings: [], suggestions: [], enabled: false },
     aiEnhanced: !!payload.aiEnhanced,
-    coverage: captionCoverage
+    coverage: captionCoverage,
+    timingSource
   });
 }
 
