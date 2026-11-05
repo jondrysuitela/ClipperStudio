@@ -4373,7 +4373,7 @@ async function exportClip(payload, setProgress = () => {}, children = null, opti
       speakerScript: SPEAKER_DETECT_PY, faceScript: FACE_DETECT_PY, ffmpegPath: FFMPEG, modelsRoot: MODELS_ROOT,
       sampleFps: 3, minSegmentMs: 300, noiseDb: -35,
       enableFaceTracking: payload.faceTrack, sourceW: sourceVideoWidth, sourceH: sourceVideoHeight,
-      targetAspect: resolveRatio(payload.ratio), zoom: Number(process.env.CLIPFORGE_FACE_ZOOM || 1),
+      targetAspect: resolveRatio(payload.ratio), zoom: Number(process.env.CLIPFORGE_FACE_ZOOM || 1.15),
       faceStartSeconds: analysisSourceIsClipSection ? 0 : originalStart,
       faceDurationSeconds: cutDuration
     };
@@ -4398,7 +4398,7 @@ async function exportClip(payload, setProgress = () => {}, children = null, opti
       analyzeResult.associations = localAIModule.associateSpeakerWithFace(analyzeResult.speakerTimeline, analyzeResult.faceTimeline, {
         sourceWidth: sourceVideoWidth,
         sourceHeight: sourceVideoHeight,
-        targetAspect: resolveRatio(payload.ratio), zoom: Number(process.env.CLIPFORGE_FACE_ZOOM || 1)
+        targetAspect: resolveRatio(payload.ratio), zoom: Number(process.env.CLIPFORGE_FACE_ZOOM || 1.15)
       });
       const localaiDir = path.join(projectDir, "localai");
       fs.mkdirSync(localaiDir, { recursive: true });
@@ -8107,6 +8107,8 @@ module.exports = {
     // Dipakai test guard: Host/Origin/isSafePath/escapeHtml.
     startServerForTest: startServer,
     applyLearnedRanking,
+    computeAudioBonuses,
+    splitSentenceSpans,
     getLearnedWeightsCached,
     applyPythonIsolation,
     isSafePath,

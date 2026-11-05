@@ -53,7 +53,12 @@ class LocalProvider extends AIProvider {
   // deterministik & grounded ke sumber. Tidak pernah mengarang.
   async analyze(task, { system, user, options = {} } = {}) {
     const e = engines();
-    const usr = typeof user === "string" ? user : JSON.stringify(user || {});
+    // Orchestrator mengirim user sebagai objek { text, language, task, options }.
+    // Jangan di-JSON.stringify: seluruh payload ikut terbaca sebagai kalimat dan
+    // hook jadi berisi kunci JSON (bug nyata pada analyze-clip).
+    const usr = typeof user === "string"
+      ? user
+      : String((user && (user.text || user.prompt || "")) || "");
     // user berisi blok "TRANSCRIPT..." — kita parsing teks untuk engine lokal.
     const parsed = parseTranscriptBlock(usr);
     const language = (options && options.language) || "id";

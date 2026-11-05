@@ -1,5 +1,6 @@
 // Regression: framing cut-to-face (zoom + headroom).
 const assert = require("assert");
+const fs = require("fs");
 const AS = require("./clipme-active-speaker.js");
 
 const results = [];
@@ -40,6 +41,12 @@ test("crop tidak keluar dari frame sumber", () => {
   });
   const { x, y, w, h } = out[0].crop;
   assert.ok(x >= 0 && y >= 0 && x + w <= 1920.5 && y + h <= 1080.5, `crop ${x},${y} ${w}x${h}`);
+});
+
+test("server memakai zoom default 1.15 (framing lebih ketat)", () => {
+  const src = fs.readFileSync("server.js", "utf8");
+  const hits = src.split("CLIPFORGE_FACE_ZOOM || 1.15").length - 1;
+  assert.strictEqual(hits, 2, `default zoom harus di dua call site, dapat ${hits}`);
 });
 
 test("headroom menempatkan wajah di bagian atas crop", () => {
