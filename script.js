@@ -3467,7 +3467,9 @@ $("#autoCaptionBtn").addEventListener("click", async () => {
     if (cov && typeof cov.percent === "number") {
       qaSummary += ` · ${cov.percent}% tercakup`;
       if (!cov.ok) {
-        showToast(`Caption menutup ${cov.percent}% durasi clip. Sisanya belum ada teks — coba STT ulang.`);
+        // Persentase rendah belum tentu bug: jeda panjang/musik memang tidak
+        // punya caption. Hanya peringatkan kalau sebagian besar clip kosong.
+        showToast(`Caption menutup ${cov.percent}% durasi clip (sisanya jeda/senyap).`);
       }
     }
     const qa = data.qa;

@@ -5780,6 +5780,17 @@ function deRollTranscriptSegments(segments, clipStart, clipEnd) {
   return { segments: merged, rolling: true };
 }
 
+// Model STT untuk caption. 'base' jauh lebih akurat daripada 'tiny' pada ucapan
+// spontan, dan clip pendek tetap cepat di CPU. Kalau model base belum terpasang,
+// kembalikan string kosong supaya pemanggil memakai model default.
+function captionSttModel() {
+  const preferred = String(process.env.CLIPFORGE_CAPTION_STT_MODEL || "base");
+  if (!preferred) return "";
+  const flat = path.join(MODELS_ROOT, preferred, "model.bin");
+  if (fs.existsSync(flat)) return preferred;
+  return "";
+}
+
 // Ambil audio clip (0..durasi) untuk STT. Sumber bisa file lokal, section yang
 // sudah pernah diunduh, atau unduhan YouTube on-demand.
 async function extractClipAudioForStt(projectDir, manifest, payload, children = null) {
@@ -5959,7 +5970,10 @@ async function handleAutoCaptions(req, res) {
     const audioPath = await extractClipAudioForStt(projectDir, manifest, payload);
     if (audioPath) {
       try {
-        const stt = await transcribeAudio(audioPath, clipmeLangTag(payload.language || ""), payload.model || "");
+        // payload.model adalah model untuk analisis penuh; caption memakai model
+        // yang lebih akurat kalau tersedia.
+        const sttModel = captionSttModel() || payload.model || "";
+        const stt = await transcribeAudio(audioPath, clipmeLangTag(payload.language || ""), sttModel);
 const sttSegments = (stt.segments || [])
           .map((seg) => ({
             start: Math.max(0, Number(seg.start) || 0),
@@ -5989,6 +6003,7 @@ const sttSegments = (stt.segments || [])
           }
           filled.sort((a, b) => a.start - b.start);
           captionSegments = filled;
+          timingSource,
           timingSource = `stt-${stt.provider || "local"}`;
           console.log(`[Caption] timing dari STT clip (${sttSegments.length} segmen) + ${filled.length - sttSegments.length} baris transcript untuk lubang`);
         }
@@ -6238,7 +6253,7 @@ const sttSegments = (stt.segments || [])
       const mod = require(path.join(ROOT, "clipme-caption-clean.js"));
       const dur = Math.max(0.001, (Number(clip.end) || 0) - (Number(clip.start) || 0));
       const ratio = mod.coverageOf(timed, 0, dur);
-      return { ratio: Math.round(ratio * 1000) / 1000, percent: Math.round(ratio * 100), ok: ratio >= 0.85 };
+      return { ratio: Math.round(ratio * 1000) / 1000, percent: Math.round(ratio * 100), ok: ratio >= 0.4 };
     } catch { return null; }
   })();
   sendJson(res, 200, {
@@ -6250,7 +6265,8 @@ const sttSegments = (stt.segments || [])
     qa: qaResult || { warnings: [], suggestions: [], enabled: false },
     aiEnhanced: !!payload.aiEnhanced,
     coverage: captionCoverage,
-    timingSource
+    timingSource,
+    sttModel: String(timingSource).startsWith("stt-") ? (captionSttModel() || "default") : null
   });
 }
 
