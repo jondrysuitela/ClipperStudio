@@ -3653,3 +3653,14 @@ textarea:focus-visible {
   border-color: rgba(255, 96, 96, 0.5);
   color: #ff9d9d;
 }
+
+/* Preset gaya: satu baris, satu aksi. */
+.preset-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.preset-row select { flex: 1 1 auto; }
+
+.preset-row button { flex: 0 0 auto; }

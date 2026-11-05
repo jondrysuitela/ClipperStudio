@@ -4091,6 +4091,130 @@ $("#intelUseTitle").addEventListener("click", () => applyTitleSuggestion($("#int
 
 $("#intelUseDeepHook").addEventListener("click", () => applyHookSuggestion($("#intelDeepHook").textContent, "Deep hook"));
 
+// ── Preset gaya ─────────────────────────────────────────────────────────────
+// Satu nama = kombinasi caption + layout + rasio. Disimpan di localStorage,
+// divalidasi oleh clipme-style-presets.js sebelum menyentuh pipeline export.
+const PRESET_STORAGE_KEY = "clipforge.stylePresets.v1";
+
+function presetApi() {
+  return (typeof window !== "undefined" && window.ClipmeStylePresets) || null;
+}
+
+function loadCustomPresets() {
+  try {
+    const raw = localStorage.getItem(PRESET_STORAGE_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+
+function saveCustomPresets(list) {
+  try { localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(list || [])); } catch {}
+}
+
+function currentStyleSettings() {
+  return {
+    captionStyle: ($("#captionStyleSelect") && $("#captionStyleSelect").value) || "karaoke",
+    captionSize: Number($("#captionSize") && $("#captionSize").value) || 23,
+    fontFamily: ($("#captionFontSelect") && $("#captionFontSelect").value) || "Arial",
+    captionColor: ($("#captionColor") && $("#captionColor").value) || "#FFFFFF",
+    captionPosition: Number($("#captionPosition") && $("#captionPosition").value) || 76,
+    ratio: currentRatio(),
+    speakerCut: !!($("#speakerCutToggle") && $("#speakerCutToggle").checked),
+    faceTrack: !!($("#faceTrackToggle") && $("#faceTrackToggle").checked)
+  };
+}
+
+function renderPresetOptions() {
+  const api = presetApi();
+  const select = $("#stylePresetSelect");
+  if (!api || !select) return;
+  const list = api.mergePresets(loadCustomPresets());
+  const previous = select.value;
+  select.innerHTML = "";
+  for (const preset of list) {
+    const option = document.createElement("option");
+    option.value = preset.id;
+    option.textContent = preset.custom ? `${preset.name} (milikmu)` : preset.name;
+    option.title = preset.description || "";
+    select.appendChild(option);
+  }
+  if (previous && list.some((p) => p.id === previous)) select.value = previous;
+}
+
+function applyStylePreset(presetId) {
+  const api = presetApi();
+  if (!api) return false;
+  const preset = api.findPreset(presetId || (($("#stylePresetSelect") || {}).value || ""), loadCustomPresets());
+  if (!preset) return false;
+  const settings = preset.settings;
+
+  // Set nilai lalu picu event supaya preview ikut berubah (bukan hanya state).
+  const styleSel = $("#captionStyleSelect");
+  if (styleSel) { styleSel.value = settings.captionStyle; styleSel.dispatchEvent(new Event("change", { bubbles: true })); }
+  const sizeInput = $("#captionSize");
+  if (sizeInput) { sizeInput.value = String(settings.captionSize); sizeInput.dispatchEvent(new Event("input", { bubbles: true })); }
+  const fontSel = $("#captionFontSelect");
+  if (fontSel) { fontSel.value = settings.fontFamily; fontSel.dispatchEvent(new Event("change", { bubbles: true })); }
+  const colorInput = $("#captionColor");
+  if (colorInput) { colorInput.value = settings.captionColor; colorInput.dispatchEvent(new Event("input", { bubbles: true })); }
+  const posInput = $("#captionPosition");
+  if (posInput) { posInput.value = String(settings.captionPosition); posInput.dispatchEvent(new Event("input", { bubbles: true })); }
+
+  const ratioBtn = document.querySelector(`[data-ratio="${settings.ratio}"]`);
+  if (ratioBtn && !ratioBtn.classList.contains("active")) ratioBtn.click();
+
+  const speakerToggle = $("#speakerCutToggle");
+  if (speakerToggle) { speakerToggle.checked = settings.speakerCut; speakerToggle.dispatchEvent(new Event("change", { bubbles: true })); }
+  const faceToggle = $("#faceTrackToggle");
+  if (faceToggle) { faceToggle.checked = settings.faceTrack; faceToggle.dispatchEvent(new Event("change", { bubbles: true })); }
+
+  const hint = $("#presetHint");
+  if (hint) hint.textContent = `${preset.name} diterapkan — dipakai untuk semua export berikutnya.`;
+  showToast(`Preset "${preset.name}" diterapkan.`);
+  return true;
+}
+
+$("#stylePresetSelect")?.addEventListener("change", () => {
+  applyStylePreset();
+});
+
+$("#applyPresetBtn")?.addEventListener("click", () => {
+  if (!applyStylePreset()) showToast("Preset tidak ditemukan.");
+});
+
+$("#savePresetBtn")?.addEventListener("click", () => {
+  const api = presetApi();
+  if (!api) return;
+  const name = window.prompt("Nama preset gaya:", "Gaya gue");
+  if (!name) return;
+  const preset = api.createPreset(name, currentStyleSettings());
+  if (!preset) { showToast("Nama preset tidak valid."); return; }
+  const list = loadCustomPresets().filter((item) => item && item.id !== preset.id);
+  list.push(preset);
+  saveCustomPresets(list);
+  renderPresetOptions();
+  const select = $("#stylePresetSelect");
+  if (select) select.value = preset.id;
+  showToast(`Preset "${preset.name}" disimpan.`);
+});
+
+$("#deletePresetBtn")?.addEventListener("click", () => {
+  const select = $("#stylePresetSelect");
+  if (!select) return;
+  const id = select.value;
+  const list = loadCustomPresets();
+  if (!list.some((item) => item && item.id === id)) {
+    showToast("Preset bawaan tidak bisa dihapus.");
+    return;
+  }
+  saveCustomPresets(list.filter((item) => item && item.id !== id));
+  renderPresetOptions();
+  showToast("Preset dihapus.");
+});
+
+renderPresetOptions();
+
 $("#exportButton").addEventListener("click", exportSelectedClip);
 
 $("#applyTrim").addEventListener("click", applyTrim);

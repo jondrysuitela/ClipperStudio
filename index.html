@@ -648,7 +648,17 @@
                     </div>
                     <div id="speakerTimelineMeta" class="caption-hint">Speaker timeline metadata akan muncul di sini.</div>
                   </div>
-                  <div class="field-label">Caption size</div>
+                  <div class="field-label">Preset gaya</div>
+<div class="preset-row">
+  <select id="stylePresetSelect" class="inspector-input" aria-label="Preset gaya"></select>
+  <button class="secondary-button compact" id="applyPresetBtn" type="button" title="Terapkan ke klip aktif dan semua klip terpilih">Terapkan</button>
+</div>
+<div class="template-actions" style="margin-top:6px;">
+  <button class="ghost-button compact" id="savePresetBtn" type="button">Simpan gaya ini</button>
+  <button class="ghost-button compact" id="deletePresetBtn" type="button">Hapus preset</button>
+</div>
+<div class="caption-hint" id="presetHint">Pilih preset lalu Terapkan ke klip terpilih.</div>
+<div class="field-label">Caption size</div>
                   <input type="range" id="captionSize" min="14" max="40" value="23" style="width:100%">
                   <div class="field-label">Caption position</div>
                   <input type="range" id="captionPosition" min="30" max="95" value="76" style="width:100%">
@@ -1327,6 +1337,7 @@
 <script src="clipme-camera-director.js"></script>
 <script src="clipme-cut-to-face.js"></script>
 <script src="clipme-active-speaker.js"></script>
+<script src="clipme-style-presets.js"></script>
 <script src="script.js"></script>
 </body>
 </html>

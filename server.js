@@ -8160,7 +8160,7 @@ async function handleAIGenerate(req, res) {
 
 // Only these exact web assets are served from the project root.
 // Media (upload/preview/output) is served through dedicated /media/, /sections/, /outputs/ routes.
-const PUBLIC_WEB_FILES = new Set(["/index.html", "/styles.css", "/script.js", "/clipme-cut-to-face.js", "/clipme-active-speaker.js", "/clipme-caption-templates.js", "/clipme-camera-director.js", "/build/icon.png"]);
+const PUBLIC_WEB_FILES = new Set(["/index.html", "/styles.css", "/script.js", "/clipme-cut-to-face.js", "/clipme-active-speaker.js", "/clipme-caption-templates.js", "/clipme-camera-director.js", "/clipme-style-presets.js", "/build/icon.png"]);
 
 function serveStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
