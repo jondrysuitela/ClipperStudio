@@ -35,6 +35,8 @@ const state = {
   userScrolling: false,
   userScrollTimer: 0,
   suppressScrollMark: false,
+  // Status render per clip: undefined | 'queued' | 'done' | 'failed'
+  clipRenderStatus: new Map(),
   selectedClipIds: new Set(),
   captionPosition: 0.76,
   fps: 30,
@@ -588,6 +590,18 @@ function renderClips(list = clips) {
     body.appendChild(heading);
     body.appendChild(tags);
     body.appendChild(meta);
+
+    const renderState = state.clipRenderStatus && state.clipRenderStatus.get(clip.id);
+    if (renderState) {
+      const statusTag = document.createElement("span");
+      statusTag.className = `clip-render-state ${renderState}`;
+      statusTag.textContent = renderState === "done"
+        ? "Siap"
+        : renderState === "failed"
+          ? "Gagal"
+          : "Antre";
+      tags.appendChild(statusTag);
+    }
 
     const score = document.createElement("span");
     score.className = "score";
@@ -1658,6 +1672,10 @@ async function waitForJob(jobId, opts = {}) {
       throw new Error(msg);
     }
 
+  if (typeof opts.onPoll === "function") {
+    try { opts.onPoll(job); } catch {}
+  }
+
     uploadStatus.textContent = `${job.status} ${job.progress}%`;
     const jpEl = jpRefs();
     if (jpEl && jpEl.hidden) showJobProgress(JOB_LABELS[job.type] || "Memproses");
@@ -2127,7 +2145,29 @@ async function exportSelectedClip() {
     if (!response.ok && response.status !== 202) throw new Error(data.error || "Export gagal.");
     if (!data.jobId) throw new Error("Server tidak mengembalikan job export.");
 
-    const result = await waitForJob(data.jobId);
+    const result = await waitForJob(data.jobId, {
+      onPoll(job) {
+        const meta = job && job.meta;
+        if (!meta) return;
+        const done = Number(meta.completed) || 0;
+        const totalClips = Number(meta.total) || batchTotal;
+        const failed = Number(meta.failed) || 0;
+        if ($("#exportAllBtn")) $("#exportAllBtn").textContent = `Export ${done}/${totalClips}`;
+        if ($("#batchProgress")) {
+          $("#batchProgress").textContent = failed
+            ? `Klip jadi ${done}/${totalClips} · ${failed} gagal`
+            : `Klip jadi ${done}/${totalClips}`;
+        }
+        let changed = false;
+        for (const [clipId, status] of Object.entries(meta.byClip || {})) {
+          if (state.clipRenderStatus.get(clipId) !== status) {
+            state.clipRenderStatus.set(clipId, status);
+            changed = true;
+          }
+        }
+        if (changed) renderClips(state.sorted ? [...clips].sort((a, b) => (b.score || -1) - (a.score || -1)) : clips);
+      }
+    });
     const results = Array.isArray(result.results) && result.results.length ? result.results : [result];
     const warnings = [];
     for (const item of results) {
@@ -4094,6 +4134,12 @@ $("#exportAllBtn").addEventListener("click", async () => {
   $("#exportAllBtn").disabled = true;
   $("#exportAllBtn").textContent = "Exporting...";
   const batchTotal = targetClips.length;
+  state.clipRenderStatus = new Map(targetClips.map((clip) => [clip.id, "queued"]));
+  renderClips(state.sorted ? [...clips].sort((a, b) => (b.score || -1) - (a.score || -1)) : clips);
+  if ($("#batchProgress")) {
+    $("#batchProgress").hidden = false;
+    $("#batchProgress").textContent = `Klip jadi 0/${batchTotal}`;
+  }
   if ($("#exportAllBtn")) $("#exportAllBtn").textContent = `Export 0/${batchTotal}`;
   showToast(`Mengekspor ${batchTotal} clip...`);
 
@@ -4132,6 +4178,17 @@ $("#exportAllBtn").addEventListener("click", async () => {
     const result = await waitForJob(data.jobId);
     const okResults = (result.results || []).filter((item) => item && item.filename);
     const errors = (result.results || []).filter((item) => item && item.error);
+    for (const item of result.results || []) {
+      if (!item || !item.clipId) continue;
+      state.clipRenderStatus.set(item.clipId, item.error ? "failed" : "done");
+    }
+    renderClips(state.sorted ? [...clips].sort((a, b) => (b.score || -1) - (a.score || -1)) : clips);
+    if ($("#batchProgress")) {
+      $("#batchProgress").textContent = errors.length
+        ? `Klip jadi ${okCount}/${batchTotal} · ${errors.length} gagal`
+        : `Klip jadi ${okCount}/${batchTotal}`;
+    }
+
     const warnings = (result.results || []).flatMap((item) => item.warnings || []);
 
     for (const item of okResults) {

@@ -6303,6 +6303,21 @@ function handleJob(req, res, jobId) {
     status: job.status,
     progress: job.progress,
     stage: job.stage || "",
+    // Batch export: progres yang sudah DISANITASI (angka + status terbatas),
+    // bukan objek internal worker.
+    meta: job.meta
+      ? {
+        total: Number(job.meta.total) || 0,
+        completed: Number(job.meta.completed) || 0,
+        failed: Number(job.meta.failed) || 0,
+        byClip: Object.fromEntries(
+          Object.entries(job.meta.byClip || {}).map(([clipId, status]) => [
+            String(clipId).slice(0, 64),
+            status === "done" || status === "failed" ? status : "queued"
+          ])
+        )
+      }
+      : null,
     createdAt: job.createdAt,
     result: job.result,
     error: job.error
@@ -7122,6 +7137,9 @@ function handleExportBatch(req, res) {
     let failed = 0;
     let processed = 0;
     const exportResults = [];
+    // Progres yang bisa dibaca UI: "Klip jadi 2/5" + status per clip, bukan
+    // hanya satu persen gabungan yang tidak menjelaskan apa pun.
+    const batchMeta = { total, completed: 0, failed: 0, byClip: {} };
     const batchJob = createJob("batch-export", (setProgress, children) => {
       return new Promise((resolve, reject) => {
         let cancelled = false;
@@ -7165,13 +7183,17 @@ function handleExportBatch(req, res) {
             }, children).then((result) => {
               processed += 1;
               completed += 1;
-              exportResults.push({ ratio, ...result });
-              setProgress(Math.round((processed / total) * 80));
+              exportResults.push({ ratio, clipId: clipDef.clipId, ...result });
+              batchMeta.completed = completed;
+              batchMeta.byClip[clipDef.clipId] = "done";
+              setProgress(Math.round((processed / total) * 80), `Klip jadi ${completed}/${total}`);
             }).catch((err) => {
               processed += 1;
               failed += 1;
-              exportResults.push({ ratio, error: err.message });
-              setProgress(Math.round((processed / total) * 80));
+              exportResults.push({ ratio, clipId: clipDef.clipId, error: err.message });
+              batchMeta.failed = failed;
+              batchMeta.byClip[clipDef.clipId] = "failed";
+              setProgress(Math.round((processed / total) * 80), `Klip jadi ${completed}/${total} (${failed} gagal)`);
             }).finally(() => {
               activeOutputs -= 1;
               runNext();
@@ -7182,6 +7204,7 @@ function handleExportBatch(req, res) {
         runNext();
       });
     });
+    batchJob.meta = batchMeta;
     sendJson(res, 202, { batchId, jobId: batchJob.id, total });
   }).catch(() => sendJson(res, 400, { error: "Invalid JSON" }));
 }

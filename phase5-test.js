@@ -98,11 +98,25 @@ let srv = null;
     if (j.status !== 200) throw new Error("job fetch failed: " + j.status);
     // "stage" adalah label tahap proses (string pendek dari worker) untuk
     // banner progres dashboard — field publik yang disengaja.
-    const allowed = ["id", "type", "status", "progress", "stage", "createdAt", "result", "error"];
+    // "meta" hanya berisi progres batch yang sudah disanitasi server (angka +
+    // status terbatas), sehingga aman jadi field publik.
+    const allowed = ["id", "type", "status", "progress", "stage", "createdAt", "result", "error", "meta"];
     const keys = Object.keys(j.json);
     for (const k of keys) {
       if (!allowed.includes(k)) throw new Error(`leaked field: ${k}`);
     }
+    if (j.json.meta) {
+      const m = j.json.meta;
+      for (const key of ["total", "completed", "failed"]) {
+        if (typeof m[key] !== "number") throw new Error(`meta.${key} must be number`);
+      }
+      if (typeof m.byClip !== "object" || m.byClip === null) throw new Error("meta.byClip must be object");
+      for (const [clipId, status] of Object.entries(m.byClip)) {
+        if (!["queued", "done", "failed"].includes(status)) throw new Error(`meta.byClip invalid status: ${status}`);
+        if (typeof clipId !== "string" || clipId.length > 64) throw new Error("meta.byClip invalid key");
+      }
+    }
+
     for (const k of allowed) {
       if (!(k in j.json)) throw new Error(`missing whitelisted field: ${k}`);
     }
