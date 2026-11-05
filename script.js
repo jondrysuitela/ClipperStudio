@@ -3461,6 +3461,15 @@ $("#autoCaptionBtn").addEventListener("click", async () => {
     settleJobProgress("success", `${segs.length} segmen (${data.provider})`);
     // Caption QA (#19): tampilkan peringatan nyata dari provider bila ada.
     let qaSummary = `${data.provider}: ${segs.length} segmen`;
+    // Cakupan caption: kalau < 85% durasi clip berarti masih ada suara yang
+    // tidak tercaption (musik/jeda/segmen hilang dari auto-caption YouTube).
+    const cov = data.coverage;
+    if (cov && typeof cov.percent === "number") {
+      qaSummary += ` · ${cov.percent}% tercakup`;
+      if (!cov.ok) {
+        showToast(`Caption menutup ${cov.percent}% durasi clip. Sisanya belum ada teks — coba STT ulang.`);
+      }
+    }
     const qa = data.qa;
     if (qa && qa.enabled) {
       const warns = Array.isArray(qa.warnings) ? qa.warnings : [];
@@ -3472,6 +3481,7 @@ $("#autoCaptionBtn").addEventListener("click", async () => {
         if (errors.length) showToast(`Caption QA menemukan ${errors.length} masalah — lihat status caption.`);
       }
       state.captionQA = qa;
+    state.captionCoverage = cov || null;
     } else {
       state.captionQA = null;
     }

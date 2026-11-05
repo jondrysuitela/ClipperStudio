@@ -198,7 +198,12 @@ function refineSegments(segments, cfg) {
       const text = next.map((x) => String(x.text || '').trim()).filter(Boolean).join(' ');
       const startMs = Number(next[0].start) || Number(seg.start) || 0;
       const endMs = Number(next[next.length - 1].end) || Number(seg.end) || 0;
-      const tooLong = (endMs - startMs) > maxDur + 0.05 || next.length > maxWords || text.length > maxChars;
+      const durSec = Math.max(0.001, endMs - startMs);
+      // Kepadatan baca hanya berlaku untuk kalimat (> 3 kata). Ucapan 1-3 kata
+      // selalu "padat" secara hitungan; memecahnya menghasilkan satu caption
+      // per kata yang justru berkedip dan makin tidak terbaca.
+      const tooDense = next.length > 3 && text.length / durSec > maxCps;
+      const tooLong = (endMs - startMs) > maxDur + 0.05 || next.length > maxWords || text.length > maxChars || tooDense;
       if (cur.length && tooLong) flush();
       cur.push(w);
     }
@@ -233,6 +238,12 @@ function refineSegments(segments, cfg) {
     if (next) {
       const nextStart = Number(next.start) || endSec;
       if (endSec > nextStart - GAP) endSec = Math.max(startSec + 0.05, nextStart - GAP);
+      // Jeda sangat pendek (<=220 ms) membuat caption berkedip; tahan
+      // sampai sebelum segmen berikutnya tanpa melewati batas durasi.
+      const gapToNext = nextStart - endSec;
+      if (gapToNext > 0 && gapToNext <= 0.22 && (nextStart - GAP - startSec) <= maxDur) {
+        endSec = nextStart - GAP;
+      }
     }
     list[i] = reflow({ ...seg, start: startSec, end: endSec });
   }

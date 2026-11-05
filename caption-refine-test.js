@@ -95,6 +95,39 @@ test("lines dihitung ulang mengikuti batas 2x40", () => {
   }
 });
 
+test("ucapan cepat: tetap >= 2 kata per caption dan <= 7 kata", () => {
+  // Fixture ini memang 45 karakter/detik (ucapan sangat cepat); target bukan
+  // memperlambat suara, tapi memastikan caption tidak pecah jadi 1 kata
+  // (berkedip) dan tetap dalam batas kata.
+  const words = [];
+  for (let i = 0; i < 12; i++) {
+    const t = i * 0.11;
+    words.push({ text: "kata", start: t, end: t + 0.1 });
+  }
+  const seg = { id: 1, start: 0, end: 1.4, text: words.map((w) => w.text).join(" "), words, wordCount: 12 };
+  const out = refine([seg], cfg);
+  for (const s of out) {
+    assert.ok(s.wordCount >= 2, `caption "${s.text}" hanya ${s.wordCount} kata (berkedip)`);
+    assert.ok(s.wordCount <= 7, `caption "${s.text}" ${s.wordCount} kata melebihi batas`);
+  }
+  assert.strictEqual(out.reduce((n, s) => n + s.wordCount, 0), 12, "semua kata harus terpakai");
+});
+
+test("jeda pendek <=220ms ditahan agar caption tidak berkedip", () => {
+  const a = { id: 1, start: 0, end: 1.0, text: "halo semua", words: [{ text: "halo", start: 0, end: 0.5 }, { text: "semua", start: 0.5, end: 1.0 }], wordCount: 2 };
+  const b = { id: 2, start: 1.15, end: 2.0, text: "kita mulai", words: [{ text: "kita", start: 1.15, end: 1.5 }, { text: "mulai", start: 1.5, end: 2.0 }], wordCount: 2 };
+  const out = refine([a, b], cfg);
+  assert.ok(out[0].end > 1.1, `end ${out[0].end} harus ditarik mendekati segmen berikut`);
+  assert.ok(out[0].end <= 1.14, "tidak boleh melewati segmen berikut");
+});
+
+test("jeda 300ms tidak ditarik (batas tetap dihormati)", () => {
+  const a = { id: 1, start: 0, end: 1.0, text: "halo semua", words: [{ text: "halo", start: 0, end: 0.5 }], wordCount: 2 };
+  const b = { id: 2, start: 1.3, end: 2.0, text: "kita mulai", words: [{ text: "kita", start: 1.3, end: 2.0 }], wordCount: 2 };
+  const out = refine([a, b], cfg);
+  assert.ok(Math.abs(out[0].end - 1.0) < 0.01, `end ${out[0].end} tidak boleh ditarik`);
+});
+
 const failed = results.filter((r) => !r.ok).length;
 console.log(`\nCaption refine test: ${results.length - failed}/${results.length} PASS`);
 if (failed) process.exit(1);

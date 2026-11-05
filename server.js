@@ -5555,14 +5555,26 @@ function flattenTranscriptWords(segments) {
     const start = Number(seg.start || 0);
     const end = Number(seg.end || 0);
     const dur = Math.max(0.01, end - start);
-    const tokens = text.split(/\s+/);
-    const step = dur / tokens.length;
+    const tokens = text.split(/\s+/).filter(Boolean);
+    // Timing per kata tidak tersedia. Pembagian RATA membuat kata panjang
+    // selesai terlalu cepat dan kata pendek terlalu lambat, sehingga caption
+    // terasa tidak sinkron. Timbang dengan panjang kata, plus jeda kecil
+    // setelah tanda baca.
+    const weights = tokens.map((t) => {
+      const chars = String(t).replace(/[^\p{L}\p{N}]/gu, "").length || 1;
+      const pause = /[,;:.!?]$/.test(t) ? 0.6 : 0;
+      return chars + pause;
+    });
+    const totalWeight = weights.reduce((a, b) => a + b, 0) || tokens.length;
+    let acc = 0;
     tokens.forEach((t, i) => {
-      const wStart = start + i * step;
+      const wStart = start + (acc / totalWeight) * dur;
+      acc += weights[i];
+      const wEnd = i === tokens.length - 1 ? end : start + (acc / totalWeight) * dur;
       words.push({
         text: t,
         start: Math.round(wStart * 1000) / 1000,
-        end: Math.round((i === tokens.length - 1 ? end : wStart + step) * 1000) / 1000,
+        end: Math.round(Math.max(wEnd, wStart + 0.04) * 1000) / 1000,
         speaker_id: seg.speaker_id || ""
       });
     });
@@ -5769,7 +5781,15 @@ async function handleAutoCaptions(req, res) {
   // hanya menutup sebagian clip. Isi lubangnya sebelum caption disusun.
   if (segments.length) {
     try {
-      const filled = await fillClipGapsWithStt(projectDir, manifest, payload, clip, segments);
+    // Auto-caption YouTube kadang bergulir: segmen berikut mengulang teks
+  // sebelumnya. Buang duplikatnya SEBELUM flatten supaya caption tidak dobel
+  // dan waktunya tidak bertumpuk.
+  let cleanModule = null;
+  try { cleanModule = require(path.join(ROOT, "clipme-caption-clean.js")); } catch {}
+  if (cleanModule && Array.isArray(segments) && segments.length > 1) {
+    segments = cleanModule.dedupeRollingSegments(segments);
+  }
+    const filled = await fillClipGapsWithStt(projectDir, manifest, payload, clip, segments);
       if (filled.segments !== segments) segments = filled.segments;
     } catch (e) {
       console.warn(`[GapFill] dilewati: ${e.message}`);
@@ -5962,6 +5982,16 @@ async function handleAutoCaptions(req, res) {
     qaResult = await runCaptionQAPass(timed, payload.language || "id", !!payload.aiEnhanced).catch(() => null);
   }
 
+  // Berapa persen durasi clip yang benar-benar punya caption? Kalau < 85%
+  // berarti masih ada bagian suara yang terlewat.
+  const captionCoverage = (() => {
+    try {
+      const mod = require(path.join(ROOT, "clipme-caption-clean.js"));
+      const dur = Math.max(0.001, (Number(clip.end) || 0) - (Number(clip.start) || 0));
+      const ratio = mod.coverageOf(timed, 0, dur);
+      return { ratio: Math.round(ratio * 1000) / 1000, percent: Math.round(ratio * 100), ok: ratio >= 0.85 };
+    } catch { return null; }
+  })();
   sendJson(res, 200, {
     provider: llmUsed ? "caption-llm" : "caption-heuristic",
     confidence: result.confidence || (llmUsed ? 85 : 75),
@@ -5969,7 +5999,8 @@ async function handleAutoCaptions(req, res) {
     hook,
     segments: timed,
     qa: qaResult || { warnings: [], suggestions: [], enabled: false },
-    aiEnhanced: !!payload.aiEnhanced
+    aiEnhanced: !!payload.aiEnhanced,
+    coverage: captionCoverage
   });
 }
 
