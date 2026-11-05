@@ -7835,6 +7835,7 @@ function aiProviderCard(p) {
           body: JSON.stringify({ apiKey: key })
         }).then((x) => x.json()).catch(() => ({ error: "Request gagal." }));
         if (r.error) showToast(r.error);
+        else if (r.health && r.health.ok === false) showToast(`${p.name}: ${r.health.message || r.health.state}. Key disimpan, tapi belum bisa dipakai.`);
         else showToast(`${p.name} connected (${r.health && r.health.state || "OK"}).`);
         loadAIProviders();
       } finally {

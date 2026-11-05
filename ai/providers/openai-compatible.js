@@ -50,7 +50,10 @@ class OpenAICompatibleProvider extends AIProvider {
       model,
       messages,
       temperature: options.temperature != null ? options.temperature : 0.4,
-      ...(options.json ? { response_format: { type: "json_object" } } : {})
+      ...(options.json ? { response_format: { type: "json_object" } } : {}),
+      // Default hemat: sebagian akun (mis. OpenRouter kredit kecil) menolak
+      // request 16k token. Task caption/judul tidak butuh sebesar itu.
+      max_tokens: options.maxTokens || 2048
     };
 
     const attempt = async (signal) => {
@@ -78,6 +81,17 @@ class OpenAICompatibleProvider extends AIProvider {
           const e = new Error(`Authentication failed (HTTP ${res.status}).`);
           e.code = "INVALID_KEY";
           e.status = res.status;
+          throw e;
+        }
+        if (res.status === 402) {
+          // OpenRouter memakai 402 untuk kredit kurang; jangan disamarkan
+          // sebagai "API error" biasa.
+          const text = await res.text().catch(() => "");
+          let detail = "";
+          try { detail = JSON.parse(text).error.message || ""; } catch { detail = text.slice(0, 160); }
+          const e = new Error(`Kredit/limit akun tidak cukup (HTTP 402). ${detail}`.trim());
+          e.code = "NO_CREDITS";
+          e.status = 402;
           throw e;
         }
         if (!res.ok) {
@@ -136,23 +150,49 @@ class OpenAICompatibleProvider extends AIProvider {
   }
 
   async healthCheck() {
+    if (!this.apiKey) {
+      return { ok: false, state: "INVALID_KEY", message: "API key belum diisi.", provider: this.id };
+    }
+
+    // 1) Cek termurah: GET /models. Tidak memakai token sama sekali, jadi
+    //    akun dengan kredit kecil tidak salah dilaporkan sebagai error.
+    try {
+      const res = await fetch(`${this.baseUrl}/models`, {
+        headers: { Authorization: `Bearer ${this.apiKey}` }
+      });
+      if (res.status === 401 || res.status === 403) {
+        return { ok: false, state: "INVALID_KEY", message: `API key ditolak (HTTP ${res.status}).`, provider: this.id };
+      }
+      if (res.status === 402) {
+        return { ok: false, state: "NO_CREDITS", message: "Kredit akun tidak cukup (HTTP 402).", provider: this.id };
+      }
+      if (res.status === 429) {
+        return { ok: false, state: "RATE_LIMITED", message: "Rate limited (HTTP 429).", provider: this.id };
+      }
+      if (res.ok) {
+        return { ok: true, state: "READY", message: "Connected (GET /models)", provider: this.id };
+      }
+    } catch (err) {
+      // jaringan/proxy: lanjut ke percobaan chat minimal
+    }
+
+    // 2) Fallback: satu chat sangat kecil. Kalau tetap gagal, laporkan apa adanya.
     try {
       const result = await this._chat(
-        [{ role: "user", content: "Reply with the single JSON object: {\"ok\":true}" }],
-        { json: true }
+        [{ role: "user", content: "ping" }],
+        { maxTokens: 8 }
       );
-      if (normalizeJsonOutput(result.content)) {
-        return { ok: true, state: "READY", message: "Connected", provider: this.id };
-      }
-      return { ok: false, state: "ERROR", message: "Invalid health response" };
+      return { ok: true, state: "READY", message: "Connected", provider: this.id, sample: String(result.content || "").slice(0, 24) };
     } catch (err) {
       const code = err && err.code;
       const map = {
         INVALID_KEY: "INVALID_KEY",
+        NO_CREDITS: "NO_CREDITS",
         RATE_LIMITED: "RATE_LIMITED",
+        NO_MODEL: "NO_MODEL",
         SERVER_ERROR: "ERROR"
       };
-      return { ok: false, state: map[code] || "OFFLINE", message: (err && err.message) || String(err) };
+      return { ok: false, state: map[code] || "OFFLINE", message: (err && err.message) || String(err), provider: this.id };
     }
   }
 

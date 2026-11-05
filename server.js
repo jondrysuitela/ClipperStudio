@@ -7684,6 +7684,17 @@ async function handleAIProviderConnect(req, res, params) {
     }
     aiConfig.setKeys(id, keys);
     const test = await aiManager.test(id);
+    if (test && test.ok === false && test.state === "INVALID_KEY") {
+      // Key ditolak provider: jangan disimpan supaya status tidak menyesatkan.
+      const clear = {};
+      for (const k of def.keys) if (k.secret) clear[k.key] = "";
+      aiConfig.setKeys(id, clear);
+      sendJson(res, 400, {
+        error: `${test.message || "API key ditolak (HTTP 401)."} Periksa key dan provider yang dipilih.`,
+        health: test
+      });
+      return;
+    }
     sendJson(res, 200, { id, configured: aiConfig.isConfigured(id), health: test });
   } catch (e) {
     sendJson(res, 400, { error: e.message || String(e) });

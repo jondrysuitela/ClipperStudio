@@ -465,6 +465,11 @@ function AutoCaptionEngine(options = {}) {
 
     // Determine if segment should end
     shouldEndSegment: (word, segmentWords, context) => {
+      // Ganti pembicara = batas caption. Tanpa ini satu caption bisa
+      // membentang dari pembicara A ke B dan terlihat tidak sinkron.
+      const speakerNow = String((word && word.speaker_id) || "");
+      const speakerFirst = String((segmentWords && segmentWords[0] && segmentWords[0].speaker_id) || "");
+      if (speakerNow && speakerFirst && speakerNow !== speakerFirst) return true;
       const wordText = String(word?.text ?? word ?? "");
       const segmentText = segmentWords.map((w) => String(w.text ?? w ?? "")).join(' ');
       const firstStart = Number(segmentWords[0]?.start ?? 0);
@@ -672,6 +677,12 @@ function AutoCaptionEngine(options = {}) {
             j++;
             continue;
           }
+
+          // Ganti pembicara: tutup segmen SEBELUM kata ini ikut masuk,
+          // supaya caption tidak berisi separuh suara orang lain.
+          const firstSpeaker = String((segmentWords[0] && segmentWords[0].speaker_id) || "");
+          const nextSpeaker = String(currentWord.speaker_id || "");
+          if (firstSpeaker && nextSpeaker && nextSpeaker !== firstSpeaker) break;
 
           segmentWords.push(currentWord);
           lastIdx = j;
