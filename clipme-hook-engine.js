@@ -1125,7 +1125,9 @@ function selectHook(sentences, lang, options) {
   const candidates = [];
   for (let i = 0; i < sents.length; i++) {
     const s = sents[i];
-    const r = scoreHook(s, lang, { index: i, sentences: sents });
+    // Bonus emphasis audio opsional (array paralel dengan sentences).
+    const audioBonus = Array.isArray(opts.audioBonus) ? Math.max(0, Math.min(10, Number(opts.audioBonus[i]) || 0)) : 0;
+    const r = scoreHook(s, lang, { index: i, sentences: sents, audioBonus });
     if (r.excluded) {
       candidates.push({ sentence: s, index: i, score: 0, deep: 0, excluded: true, reason: r.reason });
       continue;

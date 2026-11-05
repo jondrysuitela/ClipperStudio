@@ -1878,7 +1878,7 @@ function clipmeAssemble(sentences, segments, lang, targetLength, options) {
   // dan fallback clipHook semuanya memakai engine ini.
   let hookResult = null;
   if (hookEngineModule && typeof hookEngineModule.selectHook === "function") {
-    hookResult = hookEngineModule.selectHook(sentences, lang, {});
+    hookResult = hookEngineModule.selectHook(sentences, lang, { audioBonus: opts.audioBonus });
   }
   const chosenHook = hookResult && hookResult.hook ? hookResult.hook : starter;
   const starterScore = hookResult ? hookResult.score : clipmeStarterScore(starter, lang);
