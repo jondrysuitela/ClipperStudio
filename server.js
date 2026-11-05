@@ -2615,6 +2615,48 @@ function adaptRanked(ranked, transcript, options = {}) {
   }).sort((a, b) => a.start - b.start);
 }
 
+// Bobot hook hasil pembelajaran (cache 60s; scan outputs tidak tiap request).
+let learnedRankCache = { at: 0, data: null };
+function getLearnedWeightsCached() {
+  if (process.env.CLIPFORGE_LEARNED_RANK === "0") return null;
+  const now = Date.now();
+  if (learnedRankCache.at && now - learnedRankCache.at < 60000) return learnedRankCache.data;
+  let data = null;
+  try {
+    const learn = require(path.join(ROOT, "clipme-hook-learn.js"));
+    const rows = collectHookPerformance().map((row) => ({
+      ...row,
+      hookType: (hookEngineModule && typeof hookEngineModule.classifyHookType === "function")
+        ? hookEngineModule.classifyHookType(row.hook, "id")
+        : "unknown"
+    }));
+    const learned = learn.learnWeights(rows, { minSamples: 3 });
+    data = learned.total >= 3 ? learned : null;
+  } catch {
+    data = null;
+  }
+  learnedRankCache = { at: now, data };
+  return data;
+}
+
+// Urutkan ulang hanya bila skor dua clip berdekatan (<= 2 poin). Skor tidak
+// diubah, jadi angka yang dilihat user tetap sama; yang berubah hanya urutan.
+function applyLearnedRanking(clips) {
+  const learned = getLearnedWeightsCached();
+  if (!learned || !Array.isArray(clips) || clips.length < 2) return clips;
+  for (const clip of clips) {
+    clip.learnedWeight = Number(learned.weights[clip.hookType]) || 1;
+  }
+  clips.sort((a, b) => {
+    const diff = (Number(b.score) || 0) - (Number(a.score) || 0);
+    if (Math.abs(diff) > 2) return diff;
+    const weighted = (Number(b.score) || 0) * (b.learnedWeight || 1) - (Number(a.score) || 0) * (a.learnedWeight || 1);
+    return Math.abs(weighted) > 0.0001 ? weighted : diff;
+  });
+  clips.forEach((clip, index) => { clip.id = index + 1; });
+  return clips;
+}
+
 function buildTranscriptClips(transcript, duration, targetLength = 90, language = "Indonesia", options) {
   if (!transcript.length) return buildClips(duration, targetLength);
   try {
@@ -2633,7 +2675,7 @@ function buildTranscriptClips(transcript, duration, targetLength = 90, language 
       mode: opts.mode, fixedDuration: opts.fixedDuration
     });
     if (opts.onIntel) opts.onIntel(run.intel);
-    return clips;
+    return applyLearnedRanking(clips);
   } catch (err) {
     console.error("[director] fallback ke pipeline lama:", err.message);
   }
@@ -5295,6 +5337,56 @@ async function handleExport(req, res) {
   sendJson(res, 202, { jobId: job.id, status: job.status, progress: job.progress });
 }
 
+// Pecah tiap segmen menjadi kalimat dengan rentang waktu proporsional.
+// Dipakai agar bonus audio bisa dipetakan ke kalimat yang tepat.
+function splitSentenceSpans(segments) {
+  const spans = [];
+  for (const seg of segments || []) {
+    const text = String(seg.text || '').trim();
+    if (!text) continue;
+    const parts = splitSentences(text);
+    const list = parts.length ? parts : [text];
+    const dur = Math.max(0.2, (Number(seg.end) || 0) - (Number(seg.start) || 0));
+    const total = list.reduce((n, p) => n + p.length, 0) || 1;
+    let cursor = Number(seg.start) || 0;
+    for (const part of list) {
+      const share = (part.length / total) * dur;
+      spans.push({ text: part, start: cursor, end: cursor + share });
+      cursor += share;
+    }
+  }
+  return spans;
+}
+
+// Bonus emphasis audio per kalimat (opsional). Butuh file sumber lokal dan
+// clip <= 180s supaya ekstraksi tetap cepat. CLIPFORGE_AUDIO_HOOK=0 mematikan.
+async function computeAudioBonuses(projectDir, spans, clip) {
+  if (process.env.CLIPFORGE_AUDIO_HOOK === "0") return null;
+  const source = findSourceFile(projectDir);
+  if (!source) return null;
+  const dur = Math.max(0.5, (Number(clip.end) || 0) - (Number(clip.start) || 0));
+  if (dur > 180) return null;
+  const wav = path.join(TMP_DIR, `audiohook-${process.pid}-${Date.now()}.wav`);
+  try {
+    await run(FFMPEG, [
+      "-y", "-ss", String(clip.start), "-t", String(dur),
+      "-i", source, "-vn", "-ac", "1", "-ar", "16000", "-f", "s16le", wav
+    ], 300000);
+    const AE = require(path.join(ROOT, "clipme-audio-emphasis.js"));
+    const pcm = fs.readFileSync(wav);
+    const envelope = AE.computeEnvelope(pcm, 16000, 100);
+    if (!envelope.length) return null;
+    const baseline = AE.baselineOf(envelope);
+    return spans.map((span) =>
+      AE.scoreSegment(envelope, 100, [{ start: span.start, end: span.end }], 0, { baseline }).bonus
+    );
+  } catch {
+    return null;
+  } finally {
+    try { fs.rmSync(wav, { force: true }); } catch {}
+  }
+}
+
 async function handleAnalyzeClip(req, res) {
   const payload = JSON.parse((await collectRequest(req, 20)).toString("utf8"));
   const projectId = sanitizeString(payload.projectId || "");
@@ -5319,8 +5411,16 @@ async function handleAnalyzeClip(req, res) {
     return;
   }
 
-  const sentences = splitSentences(segments.map((s) => s.text).join(" "));
+  // Kalimat + rentang waktunya (untuk memetakan emphasis audio).
+  const sentenceSpans = splitSentenceSpans(segments);
+  const sentences = sentenceSpans.length
+    ? sentenceSpans.map((span) => span.text)
+    : splitSentences(segments.map((s) => s.text).join(" "));
+  const audioBonus = sentenceSpans.length
+    ? await computeAudioBonuses(projectDir, sentenceSpans, clip).catch(() => null)
+    : null;
   const heuristicAnalysis = clipmeAssemble(sentences, segments, lang, clip.end - clip.start, {
+    audioBonus: audioBonus || undefined,
     keepOriginal: payload.keepOriginal,
     disableRewrite: payload.disableRewrite,
     maxAllowed: clip.end - clip.start,
@@ -8006,6 +8106,8 @@ module.exports = {
     getQueueLength: () => jobQueue.length,
     // Dipakai test guard: Host/Origin/isSafePath/escapeHtml.
     startServerForTest: startServer,
+    applyLearnedRanking,
+    getLearnedWeightsCached,
     applyPythonIsolation,
     isSafePath,
     escapeHtml
