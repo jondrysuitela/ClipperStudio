@@ -591,7 +591,17 @@ function renderClips(list = clips) {
 
     const score = document.createElement("span");
     score.className = "score";
-    score.textContent = clip.score != null && !clip.placeholder ? `${clip.score}%` : "--";
+    const scoreValue = clip.score != null && !clip.placeholder ? Math.round(Number(clip.score)) : null;
+    if (scoreValue == null || !Number.isFinite(scoreValue)) {
+      score.classList.add("empty");
+      score.textContent = "--";
+      score.title = "Belum ada skor AI";
+    } else {
+      // Angka besar tanpa "%" supaya terbaca sekilas (referensi ClippingHunter).
+      score.textContent = String(scoreValue);
+      score.dataset.band = scoreValue >= 80 ? "hot" : scoreValue >= 65 ? "good" : scoreValue >= 50 ? "ok" : "low";
+      score.title = `Skor AI ${scoreValue}/100`;
+    }
 
     button.appendChild(check);
     button.appendChild(thumb);
@@ -4054,6 +4064,17 @@ $("#selectAllClips").addEventListener("click", () => {
   showToast(allSelected ? "Semua clip di-unselect." : `Selected ${clips.length} clips`);
 });
 
+$("#topClipsBtn")?.addEventListener("click", () => {
+  // Alur referensi: "ambil 5 klip teratas" lalu export sekali klik.
+  const ranked = [...clips]
+    .filter((clip) => !clip.placeholder && Number.isFinite(Number(clip.score)))
+    .sort((a, b) => Number(b.score) - Number(a.score))
+    .slice(0, 5);
+  state.selectedClipIds = new Set(ranked.map((clip) => clip.id));
+  renderClips(state.sorted ? [...clips].sort((a, b) => (b.score || -1) - (a.score || -1)) : clips);
+  showToast(ranked.length ? `5 klip teratas dipilih (skor ${Math.round(ranked[0].score)}+).` : "Belum ada klip dengan skor.");
+});
+
 $("#exportAllBtn").addEventListener("click", async () => {
   const selectedIds = state.selectedClipIds;
   const targetClips = selectedIds.size > 0
@@ -4072,7 +4093,9 @@ $("#exportAllBtn").addEventListener("click", async () => {
   state.isExporting = true;
   $("#exportAllBtn").disabled = true;
   $("#exportAllBtn").textContent = "Exporting...";
-  showToast(`Mengekspor ${targetClips.length} clip...`);
+  const batchTotal = targetClips.length;
+  if ($("#exportAllBtn")) $("#exportAllBtn").textContent = `Export 0/${batchTotal}`;
+  showToast(`Mengekspor ${batchTotal} clip...`);
 
   try {
     const response = await fetch("/api/export-batch", {

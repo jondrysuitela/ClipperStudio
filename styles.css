@@ -1505,12 +1505,47 @@ input[type="range"] {
 
 .clip-tag.meta { color: var(--muted-dim); }
 
+/* Skor AI adalah hierarki utama di daftar klip (referensi ClippingHunter):
+   angka besar, warna per rentang, bukan teks kecil di kanan. */
 .score {
-  min-width: 46px;
-  text-align: right;
-  color: var(--accent);
-  font-weight: 700;
+  min-width: 44px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 1.05rem;
+  line-height: 1.1;
   font-family: var(--font-mono);
+  color: #0b0b0c;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.score[data-band="hot"] {
+  background: var(--accent);
+  border-color: transparent;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+}
+
+.score[data-band="good"] {
+  background: color-mix(in srgb, var(--accent) 55%, #1a1a1e);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.score[data-band="ok"] {
+  background: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.score[data-band="low"] {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.score.empty {
+  font-weight: 600;
+  font-size: 0.85rem;
+  opacity: 0.5;
 }
 
 .tabs {
