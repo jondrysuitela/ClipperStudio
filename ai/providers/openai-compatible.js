@@ -45,10 +45,18 @@ class OpenAICompatibleProvider extends AIProvider {
       throw err;
     }
 
+    // Sebagian API menolak response_format json_object kalau tidak ada kata
+    // "json" di messages (400 invalid_request). Pastikan selalu ada.
+    const wantsJson = !!options.json;
+    const hasJsonWord = messages.some((m) => /json/i.test(String(m && m.content || "")));
+    const finalMessages = wantsJson && !hasJsonWord
+      ? [{ role: "system", content: "Balas hanya dengan satu objek JSON yang valid, tanpa penjelasan." }, ...messages]
+      : messages;
+
     const url = `${this.baseUrl}/chat/completions`;
     const body = {
       model,
-      messages,
+      messages: finalMessages,
       temperature: options.temperature != null ? options.temperature : 0.4,
       ...(options.json ? { response_format: { type: "json_object" } } : {}),
       // Default hemat: sebagian akun (mis. OpenRouter kredit kecil) menolak
@@ -131,18 +139,100 @@ class OpenAICompatibleProvider extends AIProvider {
     }
   }
 
+  // Provider chat-completions hanya menerima content berupa STRING. Orchestrator
+  // mengirim objek { text, language, task, options }, jadi harus diratakan dulu;
+  // kalau tidak, API membalas "missing field content" dan task jatuh ke lokal.
+  _contentOf(user) {
+    if (typeof user === "string") return user;
+    if (user && typeof user.text === "string" && user.text.trim()) {
+      const extra = [];
+      if (user.language) extra.push(`Language: ${user.language}`);
+      if (user.task) extra.push(`Task: ${user.task}`);
+      return extra.length ? `${user.text}\n\n${extra.join("\n")}` : user.text;
+    }
+    if (user == null) return "";
+    try { return JSON.stringify(user); } catch { return String(user); }
+  }
+
+  // Model pertama di daftar belum tentu bisa dipakai key ini (Groq kerap
+  // membatasi model). Coba kandidat berikutnya sebelum menyerah.
+  _modelCandidates(preferred) {
+    const list = [preferred, ...(this.models || []), this.defaultModel].filter(Boolean);
+    const out = [];
+    for (const m of list) if (!out.includes(m)) out.push(m);
+    return out;
+  }
+
+  // Daftar model statis cepat basi (Groq sudah memensiunkan llama-3.1/3.3
+  // untuk sebagian akun). Tanyakan ke provider model apa yang benar-benar
+  // bisa dipakai key ini.
+  async _discoverModels() {
+    const now = Date.now();
+    if (this._modelsCache && now - this._modelsCache.at < 600000) return this._modelsCache.list;
+    const res = await fetch(`${this.baseUrl}/models`, {
+      headers: { Authorization: `Bearer ${this.apiKey}` }
+    });
+    if (!res.ok) return [];
+    const data = await res.json().catch(() => ({}));
+    const ids = (data.data || []).map((m) => m && m.id).filter(Boolean);
+    const chatty = ids.filter((id) => !/whisper|tts|audio|speech|embed|guard|safeguard|orpheus|rerank/i.test(id));
+    const preferred = chatty.filter((id) => /gpt-oss|llama|mixtral|qwen|deepseek|gpt-4|claude|gemini/i.test(id));
+    const list = (preferred.length ? preferred : chatty).slice(0, 5);
+    this._modelsCache = { at: now, list };
+    return list;
+  }
+
+  _isModelUnavailable(err) {
+    const msg = String((err && err.message) || "");
+    return /model_not_found|does not exist|not have access to it|unknown model|invalid model/i.test(msg);
+  }
+
   async analyze(task, { system, user, options = {} } = {}) {
     const messages = [];
-    if (system) messages.push({ role: "system", content: system });
-    messages.push({ role: "user", content: user });
-    const result = await this._chat(messages, { ...options, json: true });
+    const systemText = system == null ? "" : String(system);
+    const userText = this._contentOf(user);
+    if (!userText.trim()) {
+      const err = new Error("Prompt user kosong — tidak ada yang bisa dikirim.");
+      err.code = "EMPTY";
+      throw err;
+    }
+    if (systemText.trim()) messages.push({ role: "system", content: systemText });
+    messages.push({ role: "user", content: userText });
+    const tried = [];
+    let queue = this._modelCandidates(options.model || this.defaultModel);
+    let discovered = false;
+    let result = null;
+    let usedModel = "";
+    let lastErr = null;
+    // Batasi percobaan supaya tidak menggantung kalau semua model ditolak.
+    while (queue.length && tried.length < 4) {
+      const candidate = queue.shift();
+      if (!candidate || tried.includes(candidate)) continue;
+      tried.push(candidate);
+      try {
+        result = await this._chat(messages, { ...options, json: true, model: candidate });
+        usedModel = candidate;
+        if (tried.length > 1) console.warn(`[ai] ${this.id}: memakai model ${candidate} (fallback)`);
+        break;
+      } catch (err) {
+        lastErr = err;
+        if (!this._isModelUnavailable(err)) throw err;
+        // Habis kandidat statis: tanya provider model apa yang tersedia.
+        if (!queue.length && !discovered) {
+          discovered = true;
+          const found = await this._discoverModels().catch(() => []);
+          queue = found.filter((m) => !tried.includes(m));
+        }
+      }
+    }
+    if (!result) throw lastErr || new Error("Tidak ada model yang bisa dipakai.");
     const data = normalizeJsonOutput(result.content);
     if (!data) {
       const err = new Error("Respons model bukan JSON valid.");
       err.code = "BAD_JSON";
       throw err;
     }
-    return { ok: true, data, provider: this.id, model: (options.model || this.defaultModel), usage: result.usage };
+    return { ok: true, data, provider: this.id, model: usedModel || options.model || this.defaultModel, usage: result.usage };
   }
 
   async generate(task, params) {

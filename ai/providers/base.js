@@ -32,6 +32,31 @@ const CAPABILITIES = [
 ];
 
 // Normalisasi output JSON model: toleransi fenced code block (untrusted input).
+// Tutup JSON yang terpotong (mis. kena max_tokens) supaya isinya masih bisa
+// dipakai daripada membuang seluruh respons.
+function repairTruncatedJson(text) {
+  let inString = false;
+  let escaped = false;
+  const stack = [];
+  for (const ch of text) {
+    if (inString) {
+      if (escaped) { escaped = false; continue; }
+      if (ch === "\\") { escaped = true; continue; }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if (ch === "{" || ch === "[") stack.push(ch);
+    if (ch === "}" || ch === "]") stack.pop();
+  }
+  if (!stack.length && !inString) return null;
+  let out = text;
+  if (inString) out += '"';
+  out = out.replace(/,\s*$/, "").replace(/,\s*"[^"]*"\s*:\s*$/, "");
+  for (let i = stack.length - 1; i >= 0; i--) out += stack[i] === "{" ? "}" : "]";
+  return out;
+}
+
 function normalizeJsonOutput(text) {
   const s = String(text || "").trim();
   if (!s) return null;
@@ -39,11 +64,18 @@ function normalizeJsonOutput(text) {
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```\s*$/i, "")
     .trim();
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    return null;
+  const attempts = [cleaned];
+  const first = cleaned.indexOf("{");
+  const last = cleaned.lastIndexOf("}");
+  if (first > 0 && last > first) attempts.push(cleaned.slice(first, last + 1));
+  for (const candidate of attempts) {
+    try { return JSON.parse(candidate); } catch {}
+    const repaired = repairTruncatedJson(candidate);
+    if (repaired) {
+      try { return JSON.parse(repaired); } catch {}
+    }
   }
+  return null;
 }
 
 // Base class / helper yang dipakai semua adapter.
@@ -82,4 +114,6 @@ class AIProvider {
   }
 }
 
-module.exports = { AIProvider, CAPABILITIES, normalizeJsonOutput };
+module.exports = {
+  normalizeJsonOutput,
+  repairTruncatedJson, AIProvider, CAPABILITIES, normalizeJsonOutput };

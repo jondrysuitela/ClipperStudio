@@ -553,22 +553,27 @@ function AutoCaptionEngine(options = {}) {
   };
 
   // Main LLM integration
+  // Provider dari halaman AI Provider (ai/manager.js). Dipakai lebih dulu
+  // supaya key yang di-paste user benar-benar aktif; env tetap bisa dipakai
+  // sebagai override untuk instalasi headless.
   async function processWithLLM(transcript, style, fillerMode, speaker, language) {
     // Provider dapat dikonfigurasi: default OpenAI. Untuk DeepSeek V4 Flash set
     // CLIPFORGE_AI_BASE_URL=https://api.deepseek.com & CLIPFORGE_AI_MODEL=deepseek-v4-flash.
+    //
+    // CATATAN: model TIDAK dipakai untuk menentukan segmentasi/timing. Diuji dan
+    // hasilnya segmen tumpang tindih serta melewati durasi clip. Timing +
+    // segmentasi tetap milik engine lokal; AI dipakai di jalur QA (advisory).
     const apiKey = process.env.CLIPFORGE_AI_API_KEY || OPENAI_API_KEY;
     if (!apiKey) {
       throw new Error('OPENAI_API_KEY tidak tersedia');
     }
-    const baseUrl = (process.env.CLIPFORGE_AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
-    const model = process.env.CLIPFORGE_AI_MODEL || OPENAI_MODEL;
-    
     const systemPrompt = loadClipmeCaptionPrompt();
     if (!systemPrompt) {
       throw new Error('clipme-caption-prompt.js tidak ditemukan');
     }
-    
     const userPrompt = buildUserPrompt(transcript, style, fillerMode, speaker, language);
+    const baseUrl = (process.env.CLIPFORGE_AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
+    const model = process.env.CLIPFORGE_AI_MODEL || OPENAI_MODEL;
     
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',

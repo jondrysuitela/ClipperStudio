@@ -5821,8 +5821,67 @@ async function handleAutoCaptions(req, res) {
     return;
   }
 
-  const wordLevel = flattenTranscriptWords(segments);
-  if (!wordLevel.length) { sendJson(res, 400, { error: "Transkrip kosong." }); return; }
+  const rawWords = flattenTranscriptWords(segments);
+  if (!rawWords.length) { sendJson(res, 400, { error: "Transkrip kosong." }); return; }
+
+  // Hanya kata di dalam rentang clip. Transkrip sering menyertakan segmen utuh
+  // yang melewati batas clip, sehingga caption bisa muncul setelah video habis.
+  const clipStart = Number(clip.start) || 0;
+  const clipEnd = Number(clip.end) || clipStart;
+  const clipDuration = Math.max(0.01, clipEnd - clipStart);
+  // Satu transkrip bisa MENCAMPUR dua basis waktu: subtitle asli absolut
+  // (145-163) dan eventWords relatif (0-18). Normalisasi per kata, bukan
+  // pakai satu offset global — campuran itulah yang dulu menghasilkan caption
+  // 0-0 dan segmen 18 s yang melewati durasi clip.
+  const normalizeWord = (w) => {
+    const rawStart = Number(w.start) || 0;
+    const rawEnd = Number(w.end) || 0;
+    // Absolut bila posisinya dekat jendela clip di timeline penuh.
+    const nearClip = rawStart >= clipStart - 1.5 && rawStart <= clipEnd + 1.5;
+    const shift = nearClip ? clipStart : 0;
+    return {
+      ...w,
+      start: Math.max(0, Math.min(clipDuration, rawStart - shift)),
+      end: Math.max(0, Math.min(clipDuration, rawEnd - shift))
+    };
+  };
+
+  const prepared = rawWords
+    .filter((w) => {
+      const st = Number(w.start) || 0;
+      const en = Number(w.end) || 0;
+      if (en <= 0) return false;
+      const looksAbsolute = st >= clipStart - 1.5;
+      // Kata di dalam kalimat yang mulai sebelum clip harus dibuang: audionya
+      // tidak ada di dalam clip, jadi captionnya akan mendahului suara.
+      if (looksAbsolute && en <= clipStart) return false;
+      const insideClipAbs = en > clipStart && st < clipEnd;
+      const insideClipRel = en > 0 && st < clipDuration;
+      return insideClipAbs || insideClipRel;
+    })
+    .map(normalizeWord)
+    .filter((w) => w.end > w.start)
+    // Sengaja TIDAK diurutkan ulang berdasarkan waktu: pada auto-caption
+
+  // Auto-caption YouTube bersifat bergulir: baris berikutnya mulai sebelum baris
+  // sebelumnya selesai, sehingga kata-katanya bertumpuk di timeline. Kalau
+  // dibiarkan, caption saling menimpa dan sebagian kata tampil dua kali.
+  // Serialkan: setiap kata mulai setelah kata sebelumnya berakhir, durasi asli
+  // dipertahankan.
+  const wordLevel = [];
+  let wordCursor = 0;
+  for (const w of prepared) {
+    if (!String(w.text || "").trim()) continue;
+    const dur = Math.max(0.05, Math.min(1.2, w.end - w.start));
+    const start = Math.max(w.start, wordCursor);
+    if (start >= clipDuration) break;
+    const end = Math.min(clipDuration, start + dur);
+    if (end <= start) break;
+    wordLevel.push({ ...w, start, end });
+    wordCursor = end;
+  }
+
+  if (!wordLevel.length) { sendJson(res, 400, { error: "Tidak ada kata di dalam rentang clip." }); return; }
 
   const style = payload.style || "dynamic";
   const fillerMode = payload.fillerMode || "none";
@@ -5859,7 +5918,9 @@ async function handleAutoCaptions(req, res) {
     result = instance.processHeuristic(wordLevel, style, fillerMode, detectedSpeaker || "");
   }
 
-  const offset = clip.start;
+  // wordLevel sudah dinormalisasi relatif terhadap clip; tidak ada pergeseran
+  // tambahan di sini.
+  const offset = 0;
   const timed = [];
   let cursor = 0;
   const helpersIsFiller = (word) =>
@@ -5900,38 +5961,26 @@ async function handleAutoCaptions(req, res) {
     const want = Math.max(1, String(s.text || "").trim().split(/\s+/).filter(Boolean).length);
     let words;
     // Kata dari LLM TIDAK dipercaya mentah: hanya dipakai yang benar-benar
-    // cocok dengan wordLevel STT (teks + overlap waktu). Sisanya diambil dari
-    // kata nyata — mencegah karaoke meleset akibat timestamp karangan model.
-    const windowWords = wordLevel.filter((w) => w.start < toAbs && w.end > fromAbs);
+    // Engine lokal sudah memberi kata yang tepat untuk segmen ini (teks +
+    // waktu). Jangan dicocokkan ulang berdasarkan teks: kata kembar membuat
+    // urutan tertukar dan sebagian kalimat hilang.
     if (Array.isArray(s.words) && s.words.length) {
-      const wanted = new Set(String(s.text || "").toLowerCase().split(/\s+/).filter(Boolean));
-      const matched = [];
-      const used = new Set();
-      for (const w of windowWords) {
-        if (wanted.has(String(w.text || "").toLowerCase())) {
-          matched.push(w);
-          used.add(w);
-        }
-      }
-      words = matched.length ? matched : windowWords;
-      if (!words.length) words = takeWords(want, wordLevel);
-      else if (words.length < want) {
-        const extra = takeWords(want - words.length, wordLevel.filter((w) => !used.has(w) && w.start >= fromAbs && w.end <= toAbs));
-        words = words.concat(extra);
-      }
-      words = words.slice(0, want);
+      words = s.words.slice();
     } else {
       words = takeWords(want, windowWords);
     }
     if (!words.length) continue;
     const text = words.map((w) => w.text).join(" ");
-    const start = Math.max(0, words[0].start - offset);
-    const end = Math.max(0, words[words.length - 1].end - offset);
+    // Waktu segmen mengikuti engine (batas pause yang valid), bukan kata
+    // pertama/terakhir: kata transkrip bisa bertumpuk sehingga caption
+    // saling menimpa.
+    const start = Math.max(0, (Number(s.start) || words[0].start) - offset);
+    const end = Math.max(start + 0.05, (Number(s.end) || words[words.length - 1].end) - offset);
     const focusWords = (s.emphasis_words || []).map((w) => String(w).toLowerCase());
     const karaoke = words.map((w) => ({
       text: w.text,
-      start: Math.max(0, w.start - offset),
-      end: Math.max(0, w.end - offset),
+      start: Math.max(start, Math.min(end, w.start - offset)),
+      end: Math.max(start, Math.min(end, w.end - offset)),
       focus: focusWords.includes(w.text.toLowerCase())
     }));
     timed.push({
@@ -5947,6 +5996,27 @@ async function handleAutoCaptions(req, res) {
     });
   }
 
+  // Caption tidak boleh tumpang tindih atau melewati durasi clip: dua masalah
+  // ini yang membuat teks terasa tidak sinkron dengan suara.
+  const monotonic = [];
+  let prevEnd = 0;
+  for (const seg of timed) {
+    const rawStart = Math.max(0, Math.min(clipDuration, Number(seg.start) || 0));
+    const rawEnd = Math.max(rawStart + 0.05, Math.min(clipDuration, Number(seg.end) || rawStart));
+    const start = Math.max(rawStart, prevEnd);
+    if (start >= clipDuration - 0.05) continue;
+    const end = Math.min(clipDuration, Math.max(start + 0.05, rawEnd));
+    monotonic.push({ ...seg, id: monotonic.length + 1, start, end });
+    prevEnd = end;
+  }
+  timed.length = 0;
+  for (const seg of monotonic) timed.push(seg);
+
+  if (process.env.CLIPFORGE_DEBUG_CAPTION === "1") {
+    console.error(`[caption-dbg] raw=${rawWords.length} wordLevel=${wordLevel.length} segs=${(result.segments || []).length} timed=${timed.length} clip=${clipStart}-${clipEnd}`);
+    console.error(`[caption-dbg] first words: ${wordLevel.slice(0, 3).map((w) => `${w.start}-${w.end}`).join(" ")}`);
+    console.error(`[caption-dbg] first segs: ${(result.segments || []).slice(0, 3).map((x) => `${x.start}-${x.end}`).join(" ")}`);
+  }
   const caption = instance.deriveCaption(timed.map((s) => ({ text: s.text })));
   const hook = instance.deriveHook(timed.map((s) => ({ text: s.text })), payload.language);
 
