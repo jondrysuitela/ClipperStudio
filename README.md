@@ -325,21 +325,21 @@ Penting untuk `.venv`:
 - Verifikasi cepat: `Get-ChildItem .venv -Recurse | Where-Object LinkType` harus kosong.
 - `stt-engine.py` menambahkan folder dirinya ke `sys.path` supaya `import stt` tetap jalan di mode isolated Python embeddable.
 
-## Workspace (satu halaman, empat tahap)
+## Workspace (satu layar)
 
-Seluruh alur kerja ada di satu halaman **Workspace**. Tidak perlu pindah menu untuk
-analisis, mengedit clip, caption, maupun export:
+Semua pekerjaan ada di satu halaman, tanpa tab dan tanpa pindah menu:
 
-| Tahap | Isi |
-|---|---|
-| **01 Source** | Tempel URL / upload video, rasio, generation mode, hook strategy, caption default, lalu **Generate Best Clips**. |
-| **02 Editor** | Daftar clip + preview + inspector (tab Clip / Intel / Settings) dan tombol export. |
-| **03 Captions** | Template library, preview caption, properti, dan timeline kata. |
-| **04 Export** | Progress job, pipeline tahap, dan antrean render. |
+1. **Sumber** (kartu paling atas) — tempel URL / upload video, rasio, opsi lanjutan.
+   Satu tombol: **Analisis &amp; Buat Clip**. Panel ini otomatis meringkas diri
+   setelah project punya clip, dan bisa dibuka lagi lewat tombol **Buka**.
+2. **Editor** — daftar clip, preview (dengan caption overlay), dan inspector
+   (tab Clip / Intel / Settings) berdampingan dalam satu baris.
+3. **Captions** — template, properti, dan timeline kata tepat di bawah preview.
+4. **Export** — progress, pipeline, dan antrean dalam satu lipatan yang terbuka
+   otomatis saat job berjalan.
 
-Menu lama (`New Project`, `Studio`, `Captions`, `Processing`) tetap bisa dipanggil
-dari kode lama — semuanya diarahkan ke Workspace pada tahap yang sesuai.
-Sidebar menyorot **Workspace** selama berada di tahap mana pun.
+Menu sidebar **Captions**, **Clips**, dan **Exports** tetap ada sebagai pintasan:
+mereka membuka Workspace dan menggulir ke bagian terkait, bukan halaman baru.
 
 ## Pengujian
 

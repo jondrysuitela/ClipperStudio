@@ -1290,23 +1290,17 @@ const WORKSPACE_STAGES = { newproject: "source", studio: "editor", captions: "ed
 
 function setWorkspaceStage(stage) {
   const key = WORKSPACE_STAGES[stage] || stage;
-  const tabs = $$(".ws-stage-tab");
-  if (!tabs.length) return;
-  tabs.forEach((tab) => {
-    const active = tab.dataset.wsStage === key;
-    tab.classList.toggle("active", active);
-    if (active) tab.setAttribute("aria-current", "step");
-    else tab.removeAttribute("aria-current");
-  });
-  $$(".ws-stage").forEach((panel) => {
-    panel.classList.toggle("active", panel.dataset.wsPanel === key);
-  });
-  if (key === "editor") {
-    // Caption menyatu dengan editor: timeline tampil begitu ada project.
-    const capPanel = document.getElementById("captionTimelinePanel");
-    if (capPanel) capPanel.style.display = state.projectId ? "" : "none";
-    renderCaptionsWorkspace();
+  // Rail tahap sudah dihapus: semua zona tampil sekaligus. Tahap hanya
+  // memfokuskan pandangan dan menyiapkan renderer yang butuh konteks.
+  const focusTarget = key === "captions"
+    ? document.querySelector(".ws-caption-tools")
+    : key === "export" ? document.getElementById("wsStageExport") : null;
+  if (focusTarget && typeof focusTarget.scrollIntoView === "function") {
+    try { focusTarget.scrollIntoView({ behavior: "smooth", block: "start" }); } catch {}
   }
+  const capPanel = document.getElementById("captionTimelinePanel");
+  if (capPanel) capPanel.style.display = state.projectId ? "" : "none";
+  renderCaptionsWorkspace();
   updateWorkspaceHeader(key);
 }
 
@@ -1470,6 +1464,8 @@ async function uploadToBackend(file) {
 }
 
 function loadProject(data) {
+  // Project siap edit: ringkas panel Sumber agar editor lega.
+  if (Array.isArray(data && data.clips) && data.clips.length > 0) setSourceCollapsed(true);
   state.projectId = data.id;
   if (typeof refreshSourceAction === "function") refreshSourceAction();
   state.facePreviewByClip = Object.create(null);
@@ -4256,6 +4252,7 @@ $("#clearExports").addEventListener("click", async () => {
 // belum ada, tampil "—".
 
 function openCreateWorkspace() {
+  setSourceCollapsed(false);
   showView("newproject");
   const dz = $("#dropzone");
   if (dz) { dz.classList.add("dragging"); setTimeout(() => dz.classList.remove("dragging"), 600); }
@@ -5444,6 +5441,13 @@ function setProcPill(state, text) {
   pill.textContent = text;
 }
 
+function setExportFold(state, hint) {
+  const fold = $("#wsExportFold");
+  const el = $("#wsExportHint");
+  if (fold && state === "open") fold.open = true;
+  if (el && hint) el.textContent = hint;
+}
+
 function enterProcessingView(jobId, label, retryFn, opts = {}) {
   processingState.jobId = jobId || null;
   processingState.projectId = opts.projectId || null;
@@ -5454,6 +5458,7 @@ function enterProcessingView(jobId, label, retryFn, opts = {}) {
   processingState.stage = "";
   processingState.startedAt = Date.now();
   processingState.error = null;
+  setExportFold("open", label || "berjalan");
 
   $("#procTitle").textContent = processingState.label;
   $("#procJobId").textContent = jobId ? String(jobId).slice(0, 8).toUpperCase() : "Preparing…";
@@ -5537,6 +5542,7 @@ function completeProcessingView(result) {
   $("#procPct").textContent = "100%";
   $("#procEta").textContent = "00:00";
   setProcPill("completed", "COMPLETED");
+  setExportFold(null, "selesai");
   $("#procCancelBtn").hidden = true;
   $("#procResultsBtn").hidden = false;
 
@@ -6395,6 +6401,25 @@ if ($("#riMetaTitleCopy")) {
 if ($("#backToProjectsBtn")) $("#backToProjectsBtn").addEventListener("click", () => showView("library"));
 if ($("#npBackBtn")) $("#npBackBtn").addEventListener("click", () => showView("library"));
 if ($("#libNewProjectBtn")) $("#libNewProjectBtn").addEventListener("click", openCreateWorkspace);
+
+// Panel Sumber bisa diringkas supaya editor dapat ruang penuh.
+function setSourceCollapsed(collapsed) {
+  const panel = document.querySelector(".ws-controls .upload-panel");
+  const btn = $("#sourceToggleBtn");
+  if (!panel) return;
+  panel.classList.toggle("is-collapsed", !!collapsed);
+  if (btn) {
+    btn.textContent = collapsed ? "Buka" : "Ringkas";
+    btn.setAttribute("aria-expanded", String(!collapsed));
+  }
+}
+if ($("#sourceToggleBtn")) {
+  $("#sourceToggleBtn").addEventListener("click", () => {
+    const panel = document.querySelector(".ws-controls .upload-panel");
+    state.sourceAutoCollapsed = false;
+    setSourceCollapsed(!(panel && panel.classList.contains("is-collapsed")));
+  });
+}
 if ($("#sidebarNewProjectBtn")) $("#sidebarNewProjectBtn").addEventListener("click", openCreateWorkspace);
 $$(".ws-stage-tab").forEach((tab) => {
   tab.addEventListener("click", () => setWorkspaceStage(tab.dataset.wsStage));

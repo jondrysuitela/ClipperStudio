@@ -2773,46 +2773,8 @@ textarea:focus-visible {
 .exports-jobs[hidden] { display: none; }
 .exports-jobs-text { flex: 1; }
 
-/* Workspace bertahap: satu halaman untuk source → editor → caption → export */
-.ws-stages {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 14px 0 0;
-  padding: 6px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel-soft);
-  position: sticky;
-  top: 8px;
-  z-index: 5;
-}
-.ws-stage-tab {
-  flex: 1 1 150px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 9px 12px;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--muted);
-  font: 600 11px/1 var(--font-mono);
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-.ws-stage-tab span { opacity: .55; }
-.ws-stage-tab:hover { color: var(--text); border-color: var(--line-hover); }
-.ws-stage-tab.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
-}
-.ws-stage-tab.active span { opacity: .6; }
-.ws-stage { display: none; }
-.ws-stage.active { display: block; }
+/* Semua zona tampil sekaligus: tidak ada tab yang perlu diklik. */
+.ws-stage { display: block; }
 .ws-stage > .panel + .panel { margin-top: 14px; }
 
 /* Caption menyatu dengan Editor: template + properti + timeline */
@@ -2827,6 +2789,56 @@ textarea:focus-visible {
 @media (max-width: 1100px) {
   .ws-caption-tools { grid-template-columns: 1fr; }
 }
+
+/* Panel lipat (progress/antrean) supaya tidak menambah kebisingan */
+.ws-fold {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.ws-fold > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+  list-style: none;
+  font: 600 11px/1 var(--font-mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ws-fold > summary::-webkit-details-marker { display: none; }
+.ws-fold[open] > summary { border-bottom: 1px solid var(--line); }
+.ws-fold > summary em { font-style: normal; color: var(--muted-dim); }
+.ws-fold > section.panel { border: 0; border-radius: 0; margin: 0; }
+
+/* Workspace satu layar: kontrol di kiri (sticky), area kerja di kanan. */
+/* Satu kolom: Sumber di atas (bisa diringkas), editor memakai lebar penuh. */
+.workspace-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  margin-top: 14px;
+}
+.ws-controls {
+  position: static;
+  max-height: none;
+  overflow: visible;
+}
+.ws-controls .upload-panel.is-collapsed > *:not(.panel-heading) { display: none; }
+.ws-controls .upload-panel.is-collapsed { padding-bottom: 10px; }
+.ws-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.ws-main > .ws-stage > .studio-grid { margin-top: 0; }
+
 
 /* Rail langkah: memberi urutan kerja yang sama dengan sidebar */
 .flow-steps {

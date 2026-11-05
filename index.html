@@ -292,16 +292,14 @@
           <button class="ghost-button compact" id="wsOpenProjectsBtn" type="button">PROJECTS</button>
         </div>
       </section>
-      <nav class="ws-stages" aria-label="Tahap workspace">
-        <button class="ws-stage-tab active" type="button" data-ws-stage="source" aria-controls="wsStageSource"><span>01</span>Source</button>
-        <button class="ws-stage-tab" type="button" data-ws-stage="editor" aria-controls="wsStageEditor"><span>02</span>Editor</button>
-        <button class="ws-stage-tab" type="button" data-ws-stage="export" aria-controls="wsStageExport"><span>04</span>Export</button>
-      </nav>
-      <section class="ws-stage active" data-ws-panel="source" id="wsStageSource" aria-label="Source">
+                  <div class="workspace-layout">
+        <div class="ws-controls">
+          <section class="ws-stage" data-ws-panel="source" id="wsStageSource" aria-label="Source">
                   <div class="upload-panel panel">
                   <div class="panel-heading">
                     <h2>Source</h2>
                     <span class="status-pill" id="fileMeta">Ready</span>
+            <button class="ghost-button compact" id="sourceToggleBtn" type="button" aria-expanded="true">Ringkas</button>
                   </div>
                   <div class="create-topbar">
                     <span class="field-label" style="margin:0">ASPECT RATIO</span>
@@ -422,6 +420,8 @@
                   <button class="wide-button primary-button" id="generateButton" type="button" disabled style="display:none" aria-hidden="true" tabindex="-1">Generate clips</button>
                 </div>
       </section>
+        </div>
+        <div class="ws-main">
       <section class="ws-stage" data-ws-panel="editor" id="wsStageEditor" aria-label="Editor">
             <div class="studio-grid">
               <div class="studio-left">
@@ -759,53 +759,58 @@
       </div>
       <span class="status-pill status-pill-queued" id="procStatePill">IDLE</span>
     </section>
-            <section class="panel proc-body">
-              <div class="proc-meta">
-                <div class="proc-meta-item"><span>JOB</span><strong id="procJobId" class="proc-mono">Preparing&hellip;</strong></div>
-                <div class="proc-meta-item"><span>Elapsed</span><strong id="procElapsed">00:00</strong></div>
-                <div class="proc-meta-item"><span>Estimated</span><strong id="procEta">&mdash;</strong></div>
-              </div>
-              <div class="proc-progress">
-                <div class="proc-track"><span id="procFill" style="width:0%"></span></div>
-                <em id="procPct">0%</em>
-              </div>
-              <p class="field-label">Current task</p>
-              <div class="proc-task" id="procTask">Waiting to start&hellip;</div>
-              <div id="procEngineWrap">
-                <p class="field-label">Engines</p>
-                <div class="engine-chip-row" id="procEngineRow">
-                  <span class="engine-chip" id="engSource" data-state="unknown"><i aria-hidden="true"></i>SOURCE<b>&mdash;</b></span>
-                  <span class="engine-chip" id="engFfmpeg" data-state="unknown"><i aria-hidden="true"></i>FFMPEG<b>&mdash;</b></span>
-                  <span class="engine-chip" id="engWhisper" data-state="unknown"><i aria-hidden="true"></i>WHISPER<b>&mdash;</b></span>
-                  <span class="engine-chip" id="engHook" data-state="unknown"><i aria-hidden="true"></i>HOOK<b>&mdash;</b></span>
-                  <span class="engine-chip" id="engStory" data-state="unknown"><i aria-hidden="true"></i>STORY<b>&mdash;</b></span>
-                  <span class="engine-chip" id="engScore" data-state="unknown"><i aria-hidden="true"></i>SCORING<b>&mdash;</b></span>
-                  <span class="engine-chip" id="engDeep" data-state="unknown"><i aria-hidden="true"></i>DEEP TITLE<b>&mdash;</b></span>
+        </div>
+      </div>
+                    <details class="ws-fold" id="wsExportFold">
+          <summary><span>Progress &amp; antrean</span><em id="wsExportHint">idle</em></summary>
+  <section class="panel proc-body">
+                <div class="proc-meta">
+                  <div class="proc-meta-item"><span>JOB</span><strong id="procJobId" class="proc-mono">Preparing&hellip;</strong></div>
+                  <div class="proc-meta-item"><span>Elapsed</span><strong id="procElapsed">00:00</strong></div>
+                  <div class="proc-meta-item"><span>Estimated</span><strong id="procEta">&mdash;</strong></div>
                 </div>
-              </div>
-              <p class="field-label" id="procPipelineLabel">Pipeline</p>
-              <ol class="proc-pipeline" id="procPipeline"></ol>
-              <div class="tier-strip" id="procTierStrip" hidden></div>
-              <div class="proc-error" id="procErrorBox" hidden>
-                <strong>PROCESSING FAILED</strong>
-                <p>We couldn&rsquo;t complete this job.</p>
-                <p class="proc-error-reason">Reason: <span id="procErrorReason"></span></p>
-              </div>
-              <div class="proc-actions">
-                <button class="secondary-button" id="procCancelBtn" type="button">CANCEL JOB</button>
-                <button class="secondary-button" id="procRetryBtn" type="button" hidden>RETRY</button>
-                <button class="primary-button" id="procExportsBtn" type="button" hidden>VIEW EXPORTS</button>
-                <button class="primary-button" id="procResultsBtn" type="button" hidden>VIEW PROJECT</button>
-                <button class="ghost-button compact" id="procBackBtn" type="button">Back to Dashboard</button>
-              </div>
-            </section>
-            <section class="panel proc-queue">
-              <div class="panel-heading">
-                <h2>Queue</h2>
-                <span class="status-pill" id="procQueueCount">0</span>
-              </div>
-              <div class="queue-list" id="procQueueList"><div class="empty-state">Tidak ada job aktif.</div></div>
-            </section>
+                <div class="proc-progress">
+                  <div class="proc-track"><span id="procFill" style="width:0%"></span></div>
+                  <em id="procPct">0%</em>
+                </div>
+                <p class="field-label">Current task</p>
+                <div class="proc-task" id="procTask">Waiting to start&hellip;</div>
+                <div id="procEngineWrap">
+                  <p class="field-label">Engines</p>
+                  <div class="engine-chip-row" id="procEngineRow">
+                    <span class="engine-chip" id="engSource" data-state="unknown"><i aria-hidden="true"></i>SOURCE<b>&mdash;</b></span>
+                    <span class="engine-chip" id="engFfmpeg" data-state="unknown"><i aria-hidden="true"></i>FFMPEG<b>&mdash;</b></span>
+                    <span class="engine-chip" id="engWhisper" data-state="unknown"><i aria-hidden="true"></i>WHISPER<b>&mdash;</b></span>
+                    <span class="engine-chip" id="engHook" data-state="unknown"><i aria-hidden="true"></i>HOOK<b>&mdash;</b></span>
+                    <span class="engine-chip" id="engStory" data-state="unknown"><i aria-hidden="true"></i>STORY<b>&mdash;</b></span>
+                    <span class="engine-chip" id="engScore" data-state="unknown"><i aria-hidden="true"></i>SCORING<b>&mdash;</b></span>
+                    <span class="engine-chip" id="engDeep" data-state="unknown"><i aria-hidden="true"></i>DEEP TITLE<b>&mdash;</b></span>
+                  </div>
+                </div>
+                <p class="field-label" id="procPipelineLabel">Pipeline</p>
+                <ol class="proc-pipeline" id="procPipeline"></ol>
+                <div class="tier-strip" id="procTierStrip" hidden></div>
+                <div class="proc-error" id="procErrorBox" hidden>
+                  <strong>PROCESSING FAILED</strong>
+                  <p>We couldn&rsquo;t complete this job.</p>
+                  <p class="proc-error-reason">Reason: <span id="procErrorReason"></span></p>
+                </div>
+                <div class="proc-actions">
+                  <button class="secondary-button" id="procCancelBtn" type="button">CANCEL JOB</button>
+                  <button class="secondary-button" id="procRetryBtn" type="button" hidden>RETRY</button>
+                  <button class="primary-button" id="procExportsBtn" type="button" hidden>VIEW EXPORTS</button>
+                  <button class="primary-button" id="procResultsBtn" type="button" hidden>VIEW PROJECT</button>
+                  <button class="ghost-button compact" id="procBackBtn" type="button">Back to Dashboard</button>
+                </div>
+              </section>
+              <section class="panel proc-queue">
+                <div class="panel-heading">
+                  <h2>Queue</h2>
+                  <span class="status-pill" id="procQueueCount">0</span>
+                </div>
+                <div class="queue-list" id="procQueueList"><div class="empty-state">Tidak ada job aktif.</div></div>
+              </section>
+        </details>
       </section>
     </div>
 
